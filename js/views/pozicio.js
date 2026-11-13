@@ -3,10 +3,11 @@
 //   műveletgombok (Szerkesztés, Megnyitás a rajzon, Levétel a rajzról); szakaszok: Lépések, Megjegyzés, Napló.
 // A rajzról (jelölőre koppintva), a Pozíciók és az Áttekintő oldalról is ez nyílik. Egy pozíció = egy sor (data.js);
 // a felmérés- és hibajelölésnek (fajta) nincs lépése, csak adatai, megjegyzése és naplója.
-import { html, raw, modal, confirmDialog, toast, fmtDate } from '../ui.js';
+import { html, raw, modal, confirmDialog, toast, fmtDate, folyamat } from '../ui.js';
 import * as D from '../data.js';
 import { ICONS } from '../icons.js';
 import { markerSvg } from '../marker.js';
+import { kepKeszit, elonezetek, fotoSor, fotoNezo } from '../foto.js';
 import { ensureNev, meretSzoveg } from './common.js';
 import { editSor } from './tablak.js';
 
@@ -14,7 +15,7 @@ export const EV_TEXT = { kesz: 'kész', visszavon: 'visszavonva', hiba: 'Hiba je
 /** A pozíció megjelenített neve (a felmérés / hibajelölésnek nem kötelező a jel). */
 export const pozNev = p => p.jel || D.FAJTAK[p.fajta] || 'Pozíció';
 
-function body(id, opts) {
+function body(id, opts, fuggo = []) {
   const poz = D.getPoz(id), t = D.tetel(poz), lep = D.lepesek(poz.projektId);
   const rajz = poz.rajzId && D.getRajz(poz.rajzId);
   const lerakva = !!rajz, lepeses = poz.fajta === 'pozicio';
@@ -37,7 +38,8 @@ function body(id, opts) {
       <dl class="facts">
         <dt>Hely</dt><dd>${hely || '–'}</dd>
         <dt>Rajz</dt><dd>${rajz ? rajz.nev : '–'}</dd>
-        ${a && a.hiba ? html`<dt>Hiba</dt><dd class="t-err">${a.hiba.megj || 'nincs leírás'} <span class="muted">(${a.hiba.ki}, ${fmtDate(a.hiba.mikor, true)})</span></dd>` : ''}
+        ${a && a.hiba ? html`<dt>Hiba</dt><dd class="t-err">${a.hiba.megj || 'nincs leírás'} <span class="muted">(${a.hiba.ki}, ${fmtDate(a.hiba.mikor, true)})</span>
+          ${fotoSor(D.fotok(a.hiba.id))}</dd>` : ''}
         ${t.adatok.map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}
       </dl>
     </div>
@@ -70,18 +72,25 @@ function body(id, opts) {
             : !e && !isNext ? html`<button type="button" class="link-btn step-act" data-do="upto" data-i="${i}">Idáig kész</button>` : ''}
         </li>`; })}
     </ol>` : ''}
-    <h3 class="sec-h">Megjegyzés</h3>
+    <h3 class="sec-h">Megjegyzés és fotó</h3>
     <div class="form-col">
-      <textarea id="p-megj" maxlength="500" placeholder="Nem kötelező. A következő lépés rögzítésekor vagy hibajelzéskor a bejegyzéshez kerül."></textarea>
-      <div class="btn-row"><button type="button" class="btn btn-sm" data-do="megj">Megjegyzés mentése</button>
+      <textarea id="p-megj" maxlength="500" placeholder="Nem kötelező. A megjegyzés és a fotók a következő rögzített bejegyzéshez (lépés, hiba, megjegyzés) kerülnek."></textarea>
+      <div class="foto-fuggo" id="p-fotok">${fuggoHtml(fuggo)}</div>
+      <div class="btn-row">
+        <label class="btn btn-sm" title="Fotó készítése vagy választása (legfeljebb ${D.MAX_FOTO})">${ICONS.camera} Fotó<input type="file" id="p-foto" accept="image/*" multiple hidden></label>
+        <button type="button" class="btn btn-sm" data-do="megj">Megjegyzés mentése</button>
         ${lepeses ? html`<button type="button" class="btn btn-sm ${a.hiba ? '' : 'btn-danger'}" data-do="hiba">${a.hiba ? 'Hiba megszűnt' : 'Hiba jelzése'}</button>` : ''}</div>
     </div>
     <h3 class="sec-h">Napló</h3>
     ${log.length ? html`<ul class="log">${log.map(e => html`<li>
       <span class="when">${fmtDate(e.mikor, true)} · ${e.ki || '?'}</span>
       <span class="ev-${e.tipus}">${e.lepes ? lepNev(e.lepes) + ': ' : ''}${EV_TEXT[e.tipus] || e.tipus}</span>
-      ${e.megj ? html`<span class="note">${e.megj}</span>` : ''}</li>`)}</ul>` : html`<p class="muted small">Még nincs bejegyzés.</p>`}`;
+      ${e.megj ? html`<span class="note">${e.megj}</span>` : ''}${fotoSor(D.fotok(e.id))}</li>`)}</ul>` : html`<p class="muted small">Még nincs bejegyzés.</p>`}`;
 }
+/** A még nem rögzített (a következő bejegyzéshez csatolandó) fotók előnézete, eltávolító gombbal. */
+const fuggoHtml = fuggo => html`${fuggo.map((k, i) => html`<span class="foto-kis fuggo"><img src="${k.url}" alt="">
+  <button type="button" class="foto-ki" data-do="fotoki" data-i="${i}" aria-label="Fotó eltávolítása">✕</button></span>`)}
+  ${fuggo.length ? html`<span class="small muted">${fuggo.length} fotó – a következő bejegyzéssel kerül rögzítésre</span>` : ''}`;
 
 /**
  * Adatlap megnyitása. id: a pozíció azonosítója. opts:
@@ -91,13 +100,38 @@ function body(id, opts) {
 export function showPozicio(id, opts = {}) {
   if (!D.getPoz(id)) return null;
   const cim = () => pozNev(D.getPoz(id));
-  const dlg = modal({ title: cim(), body: body(id, opts), wide: true, actions: [{ label: 'Bezárás', value: null }] });
+  // A következő bejegyzéshez csatolandó fotók: [{ full, kicsi, url }] (újrarajzoláskor is megmaradnak)
+  const fuggo = [];
+  const dlg = modal({ title: cim(), body: body(id, opts, fuggo), wide: true, actions: [{ label: 'Bezárás', value: null }] });
   const el = dlg.el, bodyEl = el.querySelector('.modal-body');
   const rerender = () => {
-    bodyEl.innerHTML = String(body(id, opts));
+    const megj = bodyEl.querySelector('#p-megj')?.value || '';
+    bodyEl.innerHTML = String(body(id, opts, fuggo));
+    const t = bodyEl.querySelector('#p-megj'); if (t) t.value = megj;
     el.querySelector('.modal-head h2').textContent = cim();
+    elonezetek(bodyEl);
     if (opts.onChange) opts.onChange();
   };
+  elonezetek(bodyEl);
+  dlg.done.then(() => fuggo.forEach(k => URL.revokeObjectURL(k.url)));
+  const fuggoFrissit = () => { const box = bodyEl.querySelector('#p-fotok'); if (box) box.innerHTML = String(fuggoHtml(fuggo)); };
+  // Fotó kiválasztása / készítése: kicsinyítés a készüléken, utána a függő fotók közé
+  bodyEl.addEventListener('change', async e => {
+    if (e.target.id !== 'p-foto') return;
+    const files = [...e.target.files]; e.target.value = '';
+    const hely = D.MAX_FOTO - fuggo.length;
+    if (files.length > hely) toast(`Egy bejegyzéshez legfeljebb ${D.MAX_FOTO} fotó tartozhat – ${hely} került be`, 'warn', 6000);
+    const fo = files.length > 1 ? folyamat('Fotók feldolgozása') : null;
+    try {
+      for (const [i, f] of files.slice(0, hely).entries()) {
+        if (fo) fo.set(`${i + 1} / ${Math.min(files.length, hely)}`, i / Math.min(files.length, hely));
+        const k = await kepKeszit(f);
+        fuggo.push({ ...k, url: URL.createObjectURL(new Blob([k.kicsi], { type: 'image/jpeg' })) });
+      }
+    } catch (x) { toast(x.message, 'error', 6000); }
+    finally { if (fo) fo.close(); }
+    fuggoFrissit();
+  });
   const bezar = () => { dlg.close(); if (opts.onChange) opts.onChange(); };
   const takeMegj = () => (bodyEl.querySelector('#p-megj')?.value || '').trim();
   // Amíg egy bejegyzés rögzítése folyik (pl. nyitva a névbekérő), újabb művelet nem indulhat:
@@ -109,12 +143,26 @@ export function showPozicio(id, opts = {}) {
     busy = true;
     try {
       if (!await ensureNev()) return false;
-      for (const [tipus, extra] of items) await D.addEsemeny(id, tipus, extra);
+      let utolso = null;
+      for (const [tipus, extra] of items) utolso = await D.addEsemeny(id, tipus, extra);
+      // A függő fotók az utolsó bejegyzéshez kerülnek
+      if (utolso && fuggo.length) {
+        await D.addFotok(utolso, fuggo);
+        fuggo.splice(0).forEach(k => URL.revokeObjectURL(k.url));
+      }
+      const t = bodyEl.querySelector('#p-megj'); if (t) t.value = '';
       rerender();
       return true;
     } finally { busy = false; }
   };
   el.addEventListener('click', async e => {
+    // Előnézetre koppintva: nézegető (az adott bejegyzés fotói közt lapozva)
+    const n = e.target.closest('[data-fotonez]');
+    if (n) {
+      const f = D.getFoto(n.dataset.fotonez);
+      if (f) { const ids = D.fotok(f.esemeny).map(x => x.id); fotoNezo(ids, ids.indexOf(f.id), rerender); }
+      return;
+    }
     const b = e.target.closest('[data-do]'); if (!b) return;
     const act = b.dataset.do, poz = D.getPoz(id), lep = D.lepesek(poz.projektId);
     if (act === 'edit') {
@@ -146,9 +194,13 @@ export function showPozicio(id, opts = {}) {
       const l = lep.find(x => x.id === b.dataset.step);
       if (!await confirmDialog('Lépés visszavonása', `A(z) „${l.nev}” lépés újra nem kész lesz. A visszavonás is bekerül a naplóba.`, 'Visszavonás', 'danger')) return;
       await record([['visszavon', { lepes: l.id, megj: takeMegj() }]]);
+    } else if (act === 'fotoki') {
+      const [k] = fuggo.splice(Number(b.dataset.i), 1);
+      if (k) URL.revokeObjectURL(k.url);
+      fuggoFrissit();
     } else if (act === 'megj') {
       const v = takeMegj();
-      if (!v) { toast('Írd be a megjegyzést', 'warn'); return; }
+      if (!v && !fuggo.length) { toast('Írd be a megjegyzést, vagy csatolj fotót', 'warn'); return; }
       await record([['megj', { megj: v }]]);
     } else if (act === 'hiba') {
       await record([[D.allapot(id).hiba ? 'hiba_vege' : 'hiba', { megj: takeMegj() }]]);

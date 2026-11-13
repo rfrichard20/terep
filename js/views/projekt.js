@@ -52,7 +52,7 @@ async function editHozzaferes(p) {
 }
 
 function render(view, params, ctx) {
-  const p = D.projekt(), iroda = D.jog('iroda');
+  const p = D.projekt(), iroda = D.jog('iroda'), resz = D.reszesedes();
   view.innerHTML = String(html`
     ${pageHead('Projekt')}
     <div class="narrow">
@@ -76,7 +76,9 @@ function render(view, params, ctx) {
       </section>
       <section class="card">
         <div class="card-head"><h2 class="grow">Műveletsor</h2>${iroda ? html`<button class="btn btn-sm" id="seq">Szerkesztés</button>` : ''}</div>
-        <div class="card-pad"><ol class="chips">${D.lepesek().map(l => html`<li><span class="dot" style="background:${l.szin}"></span>${l.nev}</li>`)}</ol></div>
+        <div class="card-pad"><ol class="chips">${D.lepesek().map(l => html`<li><span class="dot" style="background:${l.szin}"></span>${l.nev}
+          <span class="muted"> · ${Math.round(resz.get(l.id) * 100)}%</span></li>`)}</ol>
+          <p class="small muted" style="margin:.5rem 0 0">A % a lépés részesedése a készültségből${D.lepesek().some(l => l.suly) ? ' (a megadott súlyok szerint)' : ' (súly nincs megadva: egyenlő arányban)'}.</p></div>
       </section>
       ${D.jog('admin') && !D.helyi ? hozzaferesKartya(p) : ''}
       ${D.jog('admin') ? html`<p class="page-note"><button type="button" class="btn btn-sm btn-link-danger" id="p-del">Projekt törlése…</button></p>` : ''}
@@ -126,10 +128,12 @@ function listaInfo() {
 
 export async function editLepesek(onDone) {
   const regi = D.lepesek();
-  const row = (l = { id: '', nev: '', szin: '' }) => html`<div class="seq-row" data-id="${l.id}">
+  const row = (l = { id: '', nev: '', szin: '', suly: 0 }) => html`<div class="seq-row" data-id="${l.id}">
     <span class="seq-n"></span>
     <input type="color" name="szin" value="${l.szin || '#2f7fd8'}" aria-label="A lépés színe a jelölőn" title="A jelölő színe, ha ez a legelőrébb tartó kész lépés">
     <input name="lepes" value="${l.nev}" maxlength="60" aria-label="Lépés neve" placeholder="Lépés neve">
+    <span class="seq-suly"><input type="number" name="suly" value="${l.suly || ''}" min="0" max="1000" step="1" inputmode="numeric"
+      aria-label="A lépés súlya a készültségben" title="A lépés súlya a készültségben (arányszám)" placeholder="–"><small class="seq-pct"></small></span>
     <button type="button" class="icon-btn" data-mv="-1" aria-label="Feljebb">↑</button>
     <button type="button" class="icon-btn" data-mv="1" aria-label="Lejjebb">↓</button>
     <button type="button" class="icon-btn" data-rm aria-label="Lépés törlése">✕</button></div>`;
@@ -140,12 +144,19 @@ export async function editLepesek(onDone) {
       r.querySelector('[data-mv="-1"]').disabled = i === 0;
       r.querySelector('[data-mv="1"]').disabled = i === rows.length - 1;
     });
+    // A súlyok részesedése (a sorok mellett, %-ban); ha egyiknek sincs súlya, egyenlő arányban
+    const s = rows.map(r => Math.max(0, Number(r.querySelector('[name=suly]').value) || 0)), ossz = s.reduce((a, b) => a + b, 0);
+    rows.forEach((r, i) => { r.querySelector('.seq-pct').textContent = rows.length ? Math.round((ossz ? s[i] / ossz : 1 / rows.length) * 100) + '%' : ''; });
+    const info = box.parentElement && box.parentElement.querySelector('#seq-suly-info');
+    if (info) info.textContent = ossz ? `A készültségben a súlyok aránya számít (most összesen ${ossz}).` : 'Nincs megadva súly: minden lépés egyenlő arányban számít a készültségben.';
   };
   const mentve = await modal({
     title: 'Műveletsor',
     body: html`<p class="muted small">A projekt pozícióinak állapota ezekből a lépésekből áll, ebben a sorrendben. A jelölő a legelőrébb tartó kész lépés
       színét veszi fel (amíg egy sincs kész: szürke). Átnevezéskor a korábbi bejegyzések megmaradnak.</p>
+      <div class="seq-fej small muted"><span>Lépés</span><span title="A lépés súlya a készültségben">Súly</span></div>
       <div id="seq-rows">${regi.map(l => row(l))}</div>
+      <p class="small muted" id="seq-suly-info" style="margin:.5rem 0 0"></p>
       <div class="btn-row" style="margin-top:.75rem">
         <button type="button" class="btn btn-sm" id="seq-add">+ Lépés</button>
         <select id="seq-tpl" class="seq-tpl" aria-label="Sablon betöltése"><option value="">Sablon betöltése…</option>
@@ -154,6 +165,7 @@ export async function editLepesek(onDone) {
     onMount(el) {
       const box = el.querySelector('#seq-rows');
       renum(box);
+      box.addEventListener('input', e => { if (e.target.name === 'suly') renum(box); });
       el.querySelector('#seq-add').addEventListener('click', () => {
         const n = box.children.length;
         box.insertAdjacentHTML('beforeend', String(row({ id: '', nev: '', szin: D.alapSzin(n, n + 2) })));
@@ -167,7 +179,7 @@ export async function editLepesek(onDone) {
         // A meglévő azonos nevű lépések azonosítója megmarad (így a bejegyzéseik is)
         const byName = new Map([...box.querySelectorAll('.seq-row')].map(r => [r.querySelector('[name=lepes]').value.trim(), r.dataset.id]));
         const n = t.lepesek.length;
-        box.innerHTML = String(html`${t.lepesek.map((nev, i) => row({ id: byName.get(nev) || '', nev, szin: D.alapSzin(i, n) }))}`);
+        box.innerHTML = String(html`${t.lepesek.map((nev, i) => row({ id: byName.get(nev) || '', nev, szin: D.alapSzin(i, n), suly: (t.sulyok || [])[i] || 0 }))}`);
         box.querySelector('input').dispatchEvent(new Event('input', { bubbles: true })); // módosítottnak jelöli
         renum(box);
       });
@@ -183,7 +195,8 @@ export async function editLepesek(onDone) {
     },
     actions: [{ label: 'Mégse', value: null }, { label: 'Mentés', kind: 'primary', onClick: async el => {
       const list = [...el.querySelectorAll('.seq-row')]
-        .map(r => ({ id: r.dataset.id || uid('l'), nev: r.querySelector('[name=lepes]').value.trim(), szin: r.querySelector('[name=szin]').value }))
+        .map(r => ({ id: r.dataset.id || uid('l'), nev: r.querySelector('[name=lepes]').value.trim(), szin: r.querySelector('[name=szin]').value,
+          suly: Math.max(0, Number(r.querySelector('[name=suly]').value) || 0) }))
         .filter(l => l.nev);
       if (!list.length) { toast('Legalább egy lépés kell', 'warn'); return false; }
       const kept = new Set(list.map(l => l.id));

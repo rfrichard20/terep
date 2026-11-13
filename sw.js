@@ -4,14 +4,14 @@
 // FIGYELEM: a Raktárral közös originen (GitHub Pages) a gyorsítótárak is közösek → csak a saját, PREFIX-szel
 // kezdődő gyorsítótárakat szabad törölni, különben a másik app offline fájljai vesznek el.
 const PREFIX = 'terep-';
-const VERSION = PREFIX + 'v17';
+const VERSION = PREFIX + 'v23';
 const FONTS = ['400', '500', '600', '700'].flatMap(w => ['latin', 'latin-ext'].map(s => `fonts/poppins-${w}-${s}.woff2`));
 const ASSETS = [
   ...FONTS, './', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'css/app.css',
   'js/theme.js', 'js/logic.js', 'js/config.js', 'js/model.js', 'js/backend.js', 'js/store.js',
-  'js/idb.js', 'js/ui.js', 'js/icons.js', 'js/data.js', 'js/marker.js', 'js/viewer.js', 'js/pdf-worker.js', 'js/app.js',
+  'js/idb.js', 'js/ui.js', 'js/icons.js', 'js/data.js', 'js/foto.js', 'js/marker.js', 'js/viewer.js', 'js/pdf-worker.js', 'js/app.js',
   'js/views/common.js', 'js/views/tablak.js', 'js/views/pozicio.js', 'js/views/projektek.js', 'js/views/attekinto.js', 'js/views/rajzok.js',
-  'js/views/rajz.js', 'js/views/poziciok.js', 'js/views/tipusok.js', 'js/views/projekt.js', 'js/views/fiok.js', 'js/views/belepes.js', 'js/views/felhasznalok.js', 'js/views/tomeges.js',
+  'js/views/rajz.js', 'js/views/poziciok.js', 'js/views/tipusok.js', 'js/views/projekt.js', 'js/views/fiok.js', 'js/views/belepes.js', 'js/views/felhasznalok.js', 'js/views/tomeges.js', 'js/views/teljesitmeny.js', 'js/views/munkam.js',
   'vendor/pdfium/index.browser.js', 'vendor/pdfium/pdfium.wasm', 'minta/minta_alaprajz.pdf',
 ];
 

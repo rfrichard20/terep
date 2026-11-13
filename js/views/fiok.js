@@ -1,12 +1,11 @@
 // Fiók oldal: a felhasználó (szerveres módban a belépés adatai, helyi módban a naplóba kerülő név), szinkron állapota
 // (függő és elutasított műveletek, letöltött rajzok), kijelentkezés, téma.
-import { html, raw, confirmDialog, toast } from '../ui.js';
+import { html, raw, confirmDialog, toast, fmtMB } from '../ui.js';
 import * as D from '../data.js';
 import * as S from '../store.js';
 import { editNev, pageHead } from './common.js';
 
 const ROLE_LABELS = window.TerepLogic.ROLE_LABELS;
-const meretMB = b => (b / 1048576).toLocaleString('hu-HU', { maximumFractionDigits: 1 }) + ' MB';
 const idoSzoveg = iso => (iso ? new Date(iso).toLocaleString('hu-HU', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–');
 
 /** Egy művelet rövid leírása (a függő / elutasított listához). */
@@ -28,6 +27,10 @@ function muveletNev(op) {
     case 'lepesek_mentes': return 'Műveletsor mentése';
     case 'rajz_mentes': return `Rajz adatai „${(op.rajz || {}).nev || ''}”`;
     case 'rajz_torles': return 'Rajz törlése';
+    case 'esemenyek': return `${(op.esemenyek || []).length} bejegyzés (tömeges / pótlás)`;
+    case 'foto': return `Fotó ${poz(op.poz_id)}`;
+    case 'foto_torles': return 'Fotó törlése';
+    case 'felhasznalo_mentes': return `Felhasználó mentése (${(op.felhasznalo || {}).email || ''})`;
     default: return op.type;
   }
 }
@@ -58,6 +61,7 @@ function render(view, params, ctx) {
           ${s.lastError ? html`<p class="small" style="color:var(--err)">${s.lastError}</p>` : ''}
           <div class="kv"><span>Utolsó</span><b>${idoSzoveg(s.at)}</b></div>
           <div class="kv"><span>Rajzok</span><b id="rajzok">…</b></div>
+          ${S.fotosorSajat().length ? html`<div class="kv"><span>Fotók</span><b>${S.fotosorSajat().length} vár feltöltésre</b></div>` : ''}
           <p class="small muted" style="margin:.75rem 0 0">Az adatok és a megnyitott projekt rajzai a készüléken is megmaradnak, így internet nélkül
             is dolgozhatsz; a rögzítések a kapcsolat helyreálltakor töltődnek fel. Új rajz feltöltéséhez internet kell.</p>
         </div>
@@ -106,7 +110,7 @@ function render(view, params, ctx) {
   });
   if (!S.isHelyi) S.letoltottRajzok().then(r => {
     const el = view.querySelector('#rajzok');
-    if (el) el.textContent = D.projekt() ? `${r.db} / ${r.ossz} letöltve (${meretMB(r.meret)}) – ${D.projekt().nev}` : 'Nincs kiválasztott projekt';
+    if (el) el.textContent = D.projekt() ? `${r.db} / ${r.ossz} letöltve (${fmtMB(r.meret)}) – ${D.projekt().nev}` : 'Nincs kiválasztott projekt';
   });
 }
 

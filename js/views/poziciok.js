@@ -86,7 +86,7 @@ function render(view, params, ctx) {
         ${szuroRajz ? html`<button type="button" class="chip on" id="p-rajz-x" title="Rajzszűrő törlése">${ICONS.map} ${szuroRajz.nev} ${ICONS.x}</button>` : ''}
         ${vanLista ? html`<button type="button" class="btn btn-sm ${st.jelol ? 'btn-primary' : ''}" id="p-jelol" title="Több pozíció kijelölése tömeges művelethez">${ICONS.check} Kijelölés</button>` : ''}
       </div>
-      <div class="table-wrap"><table class="tbl cards ${st.jelol ? 'jelol' : 'nochk'}">
+      <div class="table-wrap"><table class="tbl cards st-csik ${st.jelol ? 'jelol' : 'nochk'}">
         <thead><tr>
           ${st.jelol ? html`<th class="c-chk"><input type="checkbox" id="p-all" aria-label="A szűrt pozíciók kijelölése"></th>` : ''}
           ${[['jel', 'Jel'], ['tipus', 'Típus'], [null, 'Méret'], ['hely', 'Hely'], [null, 'Rajz'], ['allapot', 'Állapot'], ['ut', 'Utolsó bejegyzés']].map(([k, l]) =>
@@ -131,9 +131,9 @@ function render(view, params, ctx) {
 
     const allapotCell = r => !r.poz ? html`<span class="muted">Nincs lerakva</span>`
       : html`<span class="st-cell">${raw(markerSvg(D.jelolo(r.poz.id), 18))}${r.a.lepes ? r.a.lepes.nev : 'Nincs elkezdve'}</span>
-        ${r.a.hiba ? html` <span class="badge badge-err" title="${r.a.hiba.megj || ''}">Hiba</span>` : ''}`;
+        ${r.a.hiba ? html`<div class="small t-err ellipsis" title="${r.a.hiba.megj || ''}">Hiba${r.a.hiba.megj ? ': ' + r.a.hiba.megj : ''}</div>` : ''}`;
     view.querySelector('#p-body').innerHTML = String(vis.length ? html`${vis.slice(0, MAX_ROWS).map(r => html`
-      <tr class="click ${r.poz ? '' : 'off'} ${st.sel.has(r.id) ? 'sel' : ''}" tabindex="0" data-id="${r.id}">
+      <tr class="click ${r.poz ? '' : 'off'} ${st.sel.has(r.id) ? 'sel' : ''} ${r.a?.hiba ? 'st-row-hiba' : ''}" tabindex="0" data-id="${r.id}">
         ${st.jelol ? html`<td class="c-chk"><input type="checkbox" data-chk ${st.sel.has(r.id) ? raw('checked') : ''} aria-label="${r.jel} kijelölése"></td>` : ''}
         <td class="c-main nowrap"><b>${r.jel}</b></td>
         <td class="c-f1" data-l="Típus">${r.t?.tipus ? html`<span class="tipus-chip">${r.t.tipus}</span>` : '–'}</td>

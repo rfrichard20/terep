@@ -13,6 +13,24 @@ export const SZEREPEK_TIPUS = { jel: 'Típus jele', szel: 'Szélesség', mag: 'M
 export const TABLAK = { lista: SZEREPEK, tipusok: SZEREPEK_TIPUS };
 
 const M = () => S.state.model;
+/**
+ * Indexek a modell tömbjeihez (azonosító → elem, pozíció → bejegyzések, állapotok). A tömbök minden adatváltozáskor újak
+ * (store → fromServer), ezért a WeakMap-ben tárolt index magától érvénytelenné válik – nem kell kézzel üríteni.
+ * Nagy projektnél (több ezer pozíció és bejegyzés) ettől nem lassul négyzetesen a lista, a jelölők és az összesítők számítása.
+ */
+const indexek = new WeakMap();
+function index(tomb, nev, epit) {
+  let m = indexek.get(tomb);
+  if (!m) indexek.set(tomb, m = {});
+  return m[nev] || (m[nev] = epit(tomb));
+}
+const azon = tomb => index(tomb, 'id', t => new Map(t.map(x => [x.id, x])));
+const csoport = (tomb, mezo) => index(tomb, 'by:' + mezo, t => {
+  const m = new Map();
+  for (const x of t) { const k = x[mezo]; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+  return m;
+});
+const URES = Object.freeze([]);
 const AKTIV_KEY = 'terep_projekt';
 let aktiv = null;
 
@@ -39,7 +57,6 @@ export const getFelhasznalo = email => M().felhasznalok.find(u => u.email === St
 /** Mindent lát-e (a projektlista üres, és nem külsős) – ilyenkor minden projekt, a később létrehozottak is. */
 export const mindentLat = u => u.szerepkor === 'admin' || (u.szerepkor !== 'kulsos' && !u.projektek.length);
 /** Látja-e a projektet (mint a szerver: TerepLogic.lathatja). */
-export const latja = (u, pid) => window.TerepLogic.lathatja({ ...u, projektek: u.projektek.join(',') }, pid);
 /** Felhasználó mentése (új vagy meglévő): { email, nev, szerepkor, aktiv, projektek: [id], megjegyzes } → { hiba } | {}. */
 export const mentFelhasznalo = u => muvelet({ type: 'felhasznalo_mentes', pid: null,
   felhasznalo: { email: String(u.email).trim().toLowerCase(), nev: String(u.nev || '').trim(), szerepkor: u.szerepkor, aktiv: u.aktiv !== false,
@@ -60,7 +77,7 @@ async function vegrehajt(ops) { await S.enqueue(ops); }
 
 /* ---------- Projektek ---------- */
 export const projektek = () => M().projektek;
-export const getProjekt = id => M().projektek.find(p => p.id === id) || null;
+export const getProjekt = id => azon(M().projektek).get(id) || null;
 /** A kiválasztott projekt (az app ebbe nyílik legközelebb is). */
 export const aktivId = () => aktiv;
 export const projekt = () => getProjekt(aktiv);
@@ -84,12 +101,30 @@ export const updateProjekt = (id, fields) => vegrehajt({ type: 'projekt_mentes',
 export async function delProjekt(id) {
   await vegrehajt({ type: 'projekt_torles', pid: null, projekt_id: id });
   if (aktiv === id) await setAktiv(null);
+  await S.projektCacheTorol(id);
 }
 
 /* ---------- Műveletsor (projektenként) ---------- */
 export const lepesek = (pid = aktiv) => (getProjekt(pid) || {}).lepesek || [];
 export const setLepesek = (list, pid = aktiv) => vegrehajt({ type: 'lepesek_mentes', projekt_id: pid,
-  lepesek: list.map(l => ({ lepes_id: l.id, nev: l.nev, szin: l.szin })) });
+  lepesek: list.map(l => ({ lepes_id: l.id, nev: l.nev, szin: l.szin, suly: Number(l.suly) || 0 })) });
+/**
+ * A lépések részesedése a készültségből (0–1, összegük 1): a súlyok arányában; ha egyiknek sincs súlya, egyenlő arányban.
+ * Visszaad: Map(lépés-id → részesedés).
+ */
+export function reszesedes(pid = aktiv) {
+  const lep = lepesek(pid), ossz = lep.reduce((s, l) => s + (l.suly || 0), 0);
+  return new Map(lep.map(l => [l.id, ossz > 0 ? (l.suly || 0) / ossz : 1 / lep.length]));
+}
+/** Egy pozíció készültsége (0–1): a kész lépései részesedésének összege (le nem rakott pozíció: 0). */
+export function pozKeszultseg(poz, resz = null) {
+  const p = getPoz(poz);
+  if (!p || !p.rajzId) return 0;
+  resz = resz || reszesedes(p.projektId);
+  let v = 0;
+  for (const id of allapot(poz).kesz.keys()) v += resz.get(id) || 0;
+  return Math.min(1, v);
+}
 /** Van-e bejegyzés az adott lépéshez (törlés előtti figyelmeztetéshez). */
 export const lepesHasznalt = id => M().esemenyek.some(e => e.lepes === id);
 
@@ -100,7 +135,7 @@ export async function addRajz(nev, bytes, { epulet = '', szint = '', W = 0, H = 
   const id = await S.feltolt({ rajz_id: uid('r'), projekt_id: pid, nev, epulet, szint, W, H }, bytes);
   return getRajz(id);
 }
-export const getRajz = id => M().rajzok.find(r => r.id === id);
+export const getRajz = id => azon(M().rajzok).get(id);
 export const updateRajz = (id, fields) => {
   const r = { ...getRajz(id), ...fields };
   return vegrehajt({ type: 'rajz_mentes', rajz: { rajz_id: id, nev: r.nev, epulet: r.epulet, szint: r.szint } });
@@ -128,10 +163,20 @@ export const helySzoveg = (epulet, szint) => [epulet, szint].filter(Boolean).joi
 /** A projekt összes (nem törölt) pozíciója – fajta szerint szűrhető. */
 export const poziciok = (pid = aktiv, fajta = null) => M().poziciok.filter(p => p.projektId === pid && (!fajta || p.fajta === fajta));
 /** Egy rajzon lévő (lerakott) jelölések. */
-export const rajzPoziciok = rajzId => M().poziciok.filter(p => p.rajzId === rajzId);
-export const getPoz = id => M().poziciok.find(p => p.id === id);
+export const rajzPoziciok = rajzId => (rajzId ? (csoport(M().poziciok, 'rajzId').get(rajzId) || URES).slice() : []);
+export const getPoz = id => azon(M().poziciok).get(id);
 /** Pozíció a jele alapján (fajta: pozíció), vagy null. */
-export function pozJel(jel, pid = aktiv) { const k = kulcs(jel); return k ? poziciok(pid, 'pozicio').find(p => kulcs(p.jel) === k) || null : null; }
+export function pozJel(jel, pid = aktiv) {
+  const k = kulcs(jel);
+  if (!k) return null;
+  // Jel → pozíció index projektenként (az első egyező, mint korábban a find)
+  const m = index(M().poziciok, 'jel:' + pid, () => {
+    const out = new Map();
+    for (const p of poziciok(pid, 'pozicio')) { const kk = kulcs(p.jel); if (kk && !out.has(kk)) out.set(kk, p); }
+    return out;
+  });
+  return m.get(k) || null;
+}
 
 /** poz_mentes sor: csak a megadott mezők (részleges frissítés). */
 function pozSor(id, f, pid) {
@@ -210,7 +255,7 @@ export const listaErtekek = (mezo, pid = aktiv) => [...new Set(poziciok(pid, 'po
 
 /* ---------- Típusok ---------- */
 export const tipusok = (pid = aktiv) => M().tipusok.filter(t => t.projektId === pid);
-export const getTipus = id => M().tipusok.find(t => t.id === id);
+export const getTipus = id => azon(M().tipusok).get(id);
 export function tipusJel(jel, pid = aktiv) { const k = kulcs(jel); return k ? tipusok(pid).find(t => kulcs(t.jel) === k) || null : null; }
 /** A tulajdonságok a projekt oszlopsorrendjében: [[név, érték]…] (csak a kitöltöttek). */
 const rendezett = (adatok, sorrend) => {
@@ -389,12 +434,23 @@ export async function addEsemenyek(list) {
   if (rows.length) await vegrehajt(darabol(rows, esemenyek => ({ type: 'esemenyek', esemenyek })));
   return rows.length;
 }
-export const naplo = poz => M().esemenyek.filter(e => e.poz === poz);
+/** Egy pozíció bejegyzései időrendben (másolat – a hívó szabadon rendezheti / megfordíthatja). */
+export const naplo = poz => (csoport(M().esemenyek, 'poz').get(poz) || URES).slice();
+
+/* ---------- Fotók (bejegyzésenként; a feltöltés a bejegyzés után, offline is sorban áll) ---------- */
+export const MAX_FOTO = window.TerepLogic.MAX_FOTO_ESEMENYENKENT;
+export const fotok = esemenyId => (csoport(M().fotok, 'esemeny').get(esemenyId) || URES).slice();
+export const getFoto = id => azon(M().fotok).get(id) || null;
+/** Képek csatolása egy bejegyzéshez: kepek = [{ full, kicsi }] (foto.js kepKeszit). */
+export async function addFotok(esemeny, kepek) {
+  for (const k of kepek) await S.fotoHozzaad({ esemeny_id: esemeny.id, poz_id: esemeny.poz, mikor: esemeny.mikor }, k.full, k.kicsi);
+}
+export const delFoto = id => S.fotoTorol(id);
+export const fotoUrl = (id, kicsi) => S.fotoUrl(id, kicsi);
 /** Legutóbbi esemény egy pozíción (vagy null). */
 export function utolso(poz) {
-  const ev = M().esemenyek;
-  for (let i = ev.length - 1; i >= 0; i--) if (ev[i].poz === poz) return ev[i];
-  return null;
+  const ev = csoport(M().esemenyek, 'poz').get(poz);
+  return ev && ev.length ? ev[ev.length - 1] : null;
 }
 
 /**
@@ -404,10 +460,12 @@ export function utolso(poz) {
  *   lepes: a sorrendben legelőrébb tartó kész lépés (vagy null) – a jelölő ennek a színét veszi fel.
  */
 export function allapot(poz) {
+  // Egy adatállapoton belül pozíciónként egyszer számolódik (a lista, a jelölők és az összesítők ugyanazt kérik többször)
+  const tar = index(M().esemenyek, 'allapot', () => new Map());
+  if (tar.has(poz)) return tar.get(poz);
   const kesz = new Map();
   let hiba = null;
-  for (const e of M().esemenyek) {
-    if (e.poz !== poz) continue;
+  for (const e of csoport(M().esemenyek, 'poz').get(poz) || URES) {
     if (e.tipus === 'kesz') kesz.set(e.lepes, e);
     else if (e.tipus === 'visszavon') kesz.delete(e.lepes);
     else if (e.tipus === 'hiba') hiba = e;
@@ -417,13 +475,39 @@ export function allapot(poz) {
   const lep = lepesek(p ? p.projektId : aktiv);
   const flags = lep.map(l => kesz.has(l.id));
   const i = flags.lastIndexOf(true);
-  return { kesz, hiba, flags, lepes: i < 0 ? null : lep[i] };
+  const a = { kesz, hiba, flags, lepes: i < 0 ? null : lep[i] };
+  tar.set(poz, a);
+  return a;
 }
 /** A pozíció jelölőjének színe és állapota a markerSvg-hez (fajta: a felmérés / hibajelzés saját jelet kap). */
 export function jelolo(poz) {
   const a = allapot(poz), p = getPoz(poz);
   return { szin: a.lepes ? a.lepes.szin : SZIN_NINCS, mind: a.flags.length > 0 && a.flags.every(Boolean), hiba: !!a.hiba, fajta: p ? p.fajta : 'pozicio' };
 }
+/* ---------- Elvégzett munka (Teljesítmény, Munkám) ----------
+ * Csak az érvényes (azóta vissza nem vont) „kész” bejegyzések számítanak; a műveletsor-módosítás utáni pótlás nem
+ * (az adminisztráció, nem munka). Mennyiségek – pénzügyi adat nincs.
+ */
+export const POTLAS = 'Pótlás';
+/**
+ * Az elvégzett lépések a projektben: [{ e (esemény), poz, lepes, tipus, epulet, szint }], időrendben.
+ * Szűrés: tol / ig (Date, ig kizárólagos), email (a rögzítő).
+ */
+export function elvegzett({ tol = null, ig = null, email = null } = {}, pid = aktiv) {
+  const lep = new Map(lepesek(pid).map(l => [l.id, l])), out = [];
+  for (const p of poziciok(pid, 'pozicio')) {
+    if (!p.rajzId) continue;
+    const r = getRajz(p.rajzId), t = tetel(p);
+    for (const e of allapot(p.id).kesz.values()) {
+      if (!lep.has(e.lepes) || String(e.megj || '').startsWith(POTLAS)) continue;
+      const m = Date.parse(e.mikor);
+      if ((tol && m < tol.getTime()) || (ig && m >= ig.getTime()) || (email && e.kiEmail !== email)) continue;
+      out.push({ e, poz: p, lepes: lep.get(e.lepes), tipus: t.tipus || '', epulet: r ? r.epulet || '' : '', szint: r ? r.szint || '' : '' });
+    }
+  }
+  return out.sort((a, b) => String(a.e.mikor).localeCompare(String(b.e.mikor)));
+}
+
 /* ---------- Hézagok: egy későbbi lépés kész, egy korábbi nem (pl. új lépés beszúrása után) ---------- */
 /**
  * A projekt lerakott pozíciói, ahol egy lépés hiányzik, de egy későbbi már kész: [{ poz, hianyzo: [lépés], mikor }].
@@ -442,7 +526,7 @@ export function hezagok(pid = aktiv) {
   return out;
 }
 /** A hézagok pótlása: a hiányzó lépések késznek jelölése („Pótlás” megjegyzéssel). Visszaad: a bejegyzések száma. */
-export function potolHezagok(list, megj = 'Pótlás (a műveletsor módosítása után)') {
+export function potolHezagok(list, megj = POTLAS + ' (a műveletsor módosítása után)') {
   return addEsemenyek(list.flatMap(h => h.hianyzo.map(l => ({ poz: h.poz.id, tipus: 'kesz', lepes: l.id, mikor: h.mikor, megj }))));
 }
 
@@ -498,7 +582,7 @@ export async function tomegesLevetel(ids) {
 }
 
 /**
- * Projekt-összesítő (csak a „pozíció” fajtájúak): { rajz, lerakva, lerakatlan, cnt: Map(állapot-kulcs → db), hiba, felmeres, hibajel },
+ * Projekt-összesítő (csak a „pozíció” fajtájúak): { rajz, lerakva, lerakatlan, cnt: Map(állapot-kulcs → db), hiba, keszultseg (0–1, súlyozott), felmeres, hibajel },
  * vagy null, ha a projekt adata nincs a készüléken (szerveres módban csak a megnyitott projekté van meg).
  * Állapot-kulcs: '' = nincs elkezdve, különben a legelőrébb tartó kész lépés id-je.
  */
@@ -506,8 +590,8 @@ export function projektStat(pid = aktiv) {
   if (!betoltve(pid)) return null;
   const all = poziciok(pid);
   const poz = all.filter(p => p.fajta === 'pozicio');
-  const cnt = new Map();
-  let hiba = 0, lerakva = 0;
+  const cnt = new Map(), resz = reszesedes(pid);
+  let hiba = 0, lerakva = 0, ertek = 0;
   for (const p of poz) {
     if (!p.rajzId) continue;
     lerakva++;
@@ -515,7 +599,9 @@ export function projektStat(pid = aktiv) {
     const k = a.lepes ? a.lepes.id : '';
     cnt.set(k, (cnt.get(k) || 0) + 1);
     if (a.hiba) hiba++;
+    for (const id of a.kesz.keys()) ertek += resz.get(id) || 0;
   }
-  return { rajz: rajzok(pid).length, lerakva, lerakatlan: poz.length - lerakva, cnt, hiba,
+  // keszultseg: súlyozott készültség (0–1) a projekt összes pozícióján (a le nem rakottak 0-val számítanak)
+  return { rajz: rajzok(pid).length, lerakva, lerakatlan: poz.length - lerakva, cnt, hiba, keszultseg: poz.length ? ertek / poz.length : 0,
     felmeres: all.filter(p => p.fajta === 'felmeres').length, hibajel: all.filter(p => p.fajta === 'hiba').length };
 }

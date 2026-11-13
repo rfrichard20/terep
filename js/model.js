@@ -2,11 +2,12 @@
 // Tiszta függvények (nincs tárolás) – a data.js, a backend.js és a store.js is ezt használja.
 //
 // Felület modellje (data.js):
-//   projektek  – { id, nev, ugyfel, helyszin, allapot, lepesek: [{ id, nev, szin }], oszlopok: [név…], tipusOszlopok: [név…], letrehozva }
+//   projektek  – { id, nev, ugyfel, helyszin, allapot, lepesek: [{ id, nev, szin, suly }], oszlopok: [név…], tipusOszlopok: [név…], letrehozva }
 //   rajzok     – { id, projektId, nev, epulet, szint, W, H, verzio, meret, felveve, csere }
 //   poziciok   – { id, projektId, fajta, jel, tipus, szel, mag, epulet, szint, adatok: {}, rajzId|null, x, y, letrehozva, letrehozta, torolve }
 //   tipusok    – { id, projektId, jel, szel, mag, adatok: {} }
 //   esemenyek  – { id, poz, projektId, tipus, lepes?, ki (név), kiEmail, mikor, rogzitve, megj? }  – időrendben (mikor)
+//   fotok      – { id, esemeny, poz, projektId, ki, kiEmail, mikor, fuggo }  (fuggo: még a készüléken, feltöltésre vár)
 import { uid, norm } from './ui.js';
 
 const L = () => window.TerepLogic;
@@ -43,7 +44,8 @@ export function fromServer(d) {
   const lep = new Map();
   for (const l of (d.Lepesek || []).slice().sort((a, b) => a.sorrend - b.sorrend)) {
     if (!lep.has(l.projekt_id)) lep.set(l.projekt_id, []);
-    lep.get(l.projekt_id).push({ id: l.lepes_id, nev: l.nev, szin: l.szin });
+    // A szín stílusba kerül (style="background:…"): csak #rrggbb fogadható el, akkor is, ha a Sheetben kézzel írták át
+    lep.get(l.projekt_id).push({ id: l.lepes_id, nev: l.nev, szin: /^#[0-9a-f]{6}$/i.test(l.szin) ? l.szin : SZIN_NINCS, suly: Number(l.suly) || 0 });
   }
   const projektek = (d.Projektek || []).map(p => ({ id: p.projekt_id, nev: p.nev, ugyfel: p.ugyfel || '', helyszin: p.helyszin || '',
     allapot: p.allapot || 'aktiv', lepesek: lep.get(p.projekt_id) || [], oszlopok: json(p.oszlopok, []), tipusOszlopok: json(p.tipus_oszlopok, []),
@@ -63,12 +65,14 @@ export function fromServer(d) {
       if (e.megj) o.megj = e.megj;
       return o;
     });
+  const fotok = (d.Fotok || []).filter(f => !f.torolve).map(f => ({ id: f.foto_id, esemeny: f.esemeny_id, poz: f.poz_id, projektId: f.projekt_id,
+    ki: f.ki_nev || f.ki, kiEmail: f.ki, mikor: f.mikor, fuggo: false }));
   const betoltve = new Set(d.mind ? projektek.map(p => p.id) : d.projekt_id && d.Poziciok ? [d.projekt_id] : []);
   // Felhasználók: adminnak minden adat, másnak csak e-mail és név (a szerver így küldi)
   const felhasznalok = (d.Felhasznalok || []).map(u => ({ email: u.email, nev: u.nev || '', szerepkor: u.szerepkor || '',
     aktiv: u.aktiv !== false && u.aktiv !== '', projektek: String(u.projektek || '').split(',').map(s => s.trim()).filter(Boolean),
     megjegyzes: u.megjegyzes || '' }));
-  return { projektek, rajzok, poziciok, tipusok, esemenyek, felhasznalok, betoltve };
+  return { projektek, rajzok, poziciok, tipusok, esemenyek, felhasznalok, fotok, betoltve };
 }
 
 /* ---------- Korábbi, csak a készüléken tárolt adat → szerver táblák (helyi mód első indulásakor) ---------- */

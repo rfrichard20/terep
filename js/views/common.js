@@ -11,7 +11,8 @@ export function enterSubmits(el) {
 
 /** Név bekérése az első bejegyzés előtt (helyi módban nincs belépés; így látszik a naplóban, ki rögzítette). Szerveres módban a név a belépésből jön. */
 export async function ensureNev() {
-  if (D.getNev()) return true;
+  // Szerveres módban a név a belépésből jön (a Felhasznalok lapról) – itt nem kérhető be, és nem is kell
+  if (!D.helyi || D.getNev()) return true;
   return editNev();
 }
 export async function editNev() {

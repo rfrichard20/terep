@@ -102,7 +102,7 @@ async function render(view, params, ctx) {
       onMarkerMove: (pid, x, y) => D.updatePoz(pid, { x, y }),
       onSelectRect: (x0, y0, x1, y1) => jelolValt([...viewer.markers].filter(([, m]) => m.x >= x0 && m.x <= x1 && m.y >= y0 && m.y <= y1).map(([k]) => k), true),
     });
-    current = { id, doc, viewer };
+    current = { id, doc, viewer, verzio: r.verzio, args: [view, params, ctx] };
     applyEdit();
     view.querySelector('.zoom-ctl').addEventListener('click', e => {
       const b = e.target.closest('[data-z]'); if (!b) return;
@@ -283,6 +283,8 @@ function refresh() {
   if (!current) return;
   const r = D.getRajz(current.id);
   if (!r) { location.hash = `#/p/${D.aktivId()}/rajzok`; return; } // közben törölték
+  // Közben (más eszközön) kicserélték a PDF-et: a rajz újratöltődik (a jelölők az arányos helyükön)
+  if (r.verzio !== current.verzio) { render(...current.args); return; }
   drawMarkers();
 }
 

@@ -18,16 +18,20 @@ import tipusok from './views/tipusok.js';
 import projekt from './views/projekt.js';
 import fiok from './views/fiok.js';
 import felhasznalok from './views/felhasznalok.js';
+import teljesitmeny from './views/teljesitmeny.js';
+import munkam from './views/munkam.js';
 
 // A sorrend a menü sorrendje. proj: projekten belüli oldal; bottom: asztalon az oldalsáv alján; parent: menüben nincs;
 // pin: mobilon az alsó sávban kint van (a többi a „Több” gomb alatt)
 const ROUTES = {
   projektek: { view: projektek, label: 'Projektek', icon: 'folder' },
-  attekinto: { view: attekinto, label: 'Áttekintő', icon: 'grid', proj: true, pin: true },
+  // kulsos: a külsős szerelő ezt látja helyette (Munkám); belso: külsősnek nem jelenik meg
+  attekinto: { view: attekinto, label: 'Áttekintő', icon: 'grid', proj: true, pin: true, kulsos: { view: munkam, label: 'Munkám', icon: 'work' } },
   rajzok: { view: rajzok, label: 'Rajzok', icon: 'map', proj: true, pin: true },
   poziciok: { view: poziciok, label: 'Pozíciók', icon: 'list', proj: true, pin: true },
-  tipusok: { view: tipusok, label: 'Típusok', icon: 'tag', proj: true },
-  projekt: { view: projekt, label: 'Projekt', icon: 'settings', proj: true },
+  tipusok: { view: tipusok, label: 'Típusok', icon: 'tag', proj: true, belso: true },
+  teljesitmeny: { view: teljesitmeny, label: 'Teljesítmény', icon: 'chart', proj: true },
+  projekt: { view: projekt, label: 'Projekt', icon: 'settings', proj: true, belso: true },
   felhasznalok: { view: felhasznalok, label: 'Felhasználók', icon: 'users', bottom: true, admin: true },
   fiok: { view: fiok, label: 'Fiók', icon: 'user', bottom: true },
   rajz: { view: rajz, label: 'Rajz', proj: true, parent: 'rajzok' },
@@ -63,8 +67,11 @@ const ctx = {
 
 /** Menü: asztalon minden pont az oldalsávban; mobilon (projekten belül) a pin-es pontok kint, a többi a „Több” alatt. */
 // admin: csak adminnak és csak szerveres módban (helyi módban nincs felhasználókezelés)
-const engedett = r => !r.admin || (D.jog('admin') && !D.helyi);
-const navItems = () => Object.entries(ROUTES).filter(([, r]) => !r.parent && (!r.proj || D.projekt()) && engedett(r));
+const kulsos = () => !!D.felhasznalo() && !D.jog('szerelo');
+const engedett = r => (!r.admin || (D.jog('admin') && !D.helyi)) && (!r.belso || !kulsos());
+/** Az útvonal a felhasználónak (a külsős a kulsos változatot kapja: más oldal, felirat, ikon). */
+const ut = r => (r && r.kulsos && kulsos() ? { ...r, ...r.kulsos } : r);
+const navItems = () => Object.entries(ROUTES).filter(([, r]) => !r.parent && (!r.proj || D.projekt()) && engedett(r)).map(([k, r]) => [k, ut(r)]);
 const extraKeys = () => (D.projekt() ? navItems().filter(([, r]) => !r.pin).map(([k]) => k) : []);
 const hrefOf = (key, r) => (r.proj ? purl(key) : '#/' + key);
 function renderNav(active) {
@@ -120,8 +127,9 @@ async function render() {
     return;
   }
   document.body.classList.remove('belepes');
+  S.syncHaRegi();
   let { pid, name, params } = parseHash();
-  let r = ROUTES[name];
+  let r = ut(ROUTES[name]);
   if (r && !engedett(r)) r = null;
   // Projekten belüli oldal: a címben lévő projekt lesz a kiválasztott; projekt nélkül (régi link) a kiválasztotté
   if (r && r.proj) {
@@ -135,7 +143,7 @@ async function render() {
   }
   if (!r) {
     name = D.projekt() ? 'attekinto' : 'projektek'; params = {};
-    r = ROUTES[name];
+    r = ut(ROUTES[name]);
     history.replaceState(null, '', r.proj ? purl(name) : '#/' + name);
   }
   if (current && current.view.close) current.view.close();
@@ -194,7 +202,7 @@ const fmtTime = t => {
   return ma ? hm : `${t.toLocaleDateString('hu-HU', { month: '2-digit', day: '2-digit' })} ${hm}`;
 };
 export function syncSzoveg() {
-  const s = S.state, n = S.myOutbox().length;
+  const s = S.state, n = S.myOutbox().length + S.fotosorSajat().length;
   let cls = 'ok', text;
   if (s.syncing) { cls = 'busy'; text = 'Szinkronizálás…'; }
   else if (s.authError) { cls = 'err'; text = 'Bejelentkezés szükséges'; }
@@ -218,10 +226,10 @@ function renderStatus() {
 }
 $('sync').addEventListener('click', e => {
   e.preventDefault();
-  const s = S.state, el = $('sync'), { text } = syncSzoveg();
+  const s = S.state, el = $('sync'), { text, n } = syncSzoveg();
   popover(el, html`<div style="padding:.35rem .5rem;max-width:260px">
       <b>${text}</b>
-      <div class="small muted" style="margin-top:.2rem">Utolsó szinkron: ${s.at ? fmtTime(new Date(s.at)) : '–'}${S.myOutbox().length ? ` · ${S.myOutbox().length} művelet vár feltöltésre` : ''}</div>
+      <div class="small muted" style="margin-top:.2rem">Utolsó szinkron: ${s.at ? fmtTime(new Date(s.at)) : '–'}${n ? ` · ${n} tétel vár feltöltésre` : ''}</div>
       ${s.lastError ? html`<div class="small" style="color:var(--err);margin-top:.3rem">${s.lastError}</div>` : ''}
     </div>
     <div class="pop-foot"><button class="btn btn-sm" data-x="sync" ${s.syncing ? 'disabled' : ''}>Szinkronizálás most</button><a class="small" href="#/fiok" data-x="more">Részletek ›</a></div>`, {

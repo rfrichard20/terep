@@ -24,6 +24,8 @@ export function html(strings, ...vals) {
 // régebbi böngészőben ilyenkor marad az alapértelmezett tagolás.
 const numFmt = new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 2, useGrouping: 'always' });
 export const fmtNum = n => (n == null || n === '' ? '–' : numFmt.format(n));
+/** Fájlméret megabájtban („4,2 MB”). */
+export const fmtMB = b => (b / 1048576).toLocaleString('hu-HU', { maximumFractionDigits: 1 }) + ' MB';
 /* Dátumok – minden formázás ezekből a segédekből megy, egységes alakban */
 const p2 = n => String(n).padStart(2, '0');
 /** Helyi dátum ÉÉÉÉ{sep}HH{sep}NN alakban (pl. bizonylatszámhoz '' elválasztóval). */
@@ -36,24 +38,8 @@ export function fmtDate(iso, withTime) {
   if (isNaN(d)) return '–';
   return `${ymd(d, '.')}.` + (withTime ? ' ' + fmtTime(d) : '');
 }
-/** Mai dátum bizonylatszámhoz: ÉÉÉÉHHNN. */
-export const dateStamp = (d = new Date()) => ymd(d, '');
-/** Mai dátum dátummezőhöz: ÉÉÉÉ-HH-NN. */
-export const todayInput = () => ymd(new Date(), '-');
 /** Rendezett oszlop jelölése a fejlécben. */
 export const sortArrow = (active, dir) => (active ? (dir > 0 ? ' ▲' : ' ▼') : '');
-/** Dátum mező (ÉÉÉÉ-HH-NN) → ISO; ha ma van, a pontos időt használja. */
-export function dateInputToIso(v) {
-  if (!v || v === todayInput()) return new Date().toISOString();
-  const [y, m, d] = v.split('-').map(Number);
-  return new Date(y, m - 1, d, 12, 0, 0).toISOString();
-}
-export function parseNum(v) {
-  if (v == null) return NaN;
-  const s = String(v).trim().replace(/\s/g, '').replace(',', '.');
-  if (s === '') return NaN;
-  return Number(s);
-}
 export function norm(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
@@ -64,11 +50,6 @@ export function norm(s) {
 export function matcher(q) {
   const words = norm(q).split(/\s+/).filter(Boolean);
   return text => { const hay = norm(text); return words.every(w => hay.includes(w)); };
-}
-/** Rendezéshez: számokat számként, minden mást magyar ábécé szerint hasonlít. */
-export function compare(a, b) {
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a ?? '').localeCompare(String(b ?? ''), 'hu');
 }
 
 /* ---------- Értesítés ---------- */
@@ -83,6 +64,32 @@ export function toast(msg, kind = 'info', ms = 3500) {
 }
 
 /* ---------- Modális ablak ---------- */
+/**
+ * Folyamatjelző ablak (pl. rajzfeltöltés): forgó jel + szöveg + opcionális sáv, gomb nélkül (nem zárható be, amíg fut).
+ * Visszaad: { set(szöveg, arány 0–1 | null), close() }.
+ */
+export function folyamat(cim) {
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = String(html`<div class="modal folyamat" role="alertdialog" aria-modal="true" aria-live="polite">
+    <div class="modal-body"><div class="fo-sor"><span class="spinner" aria-hidden="true"></span><b class="fo-cim">${cim}</b></div>
+      <p class="fo-szoveg small muted"></p><div class="fo-sav" hidden><span></span></div></div></div>`);
+  document.body.appendChild(back);
+  document.body.classList.add('modal-open');
+  const $ = s => back.querySelector(s);
+  return {
+    set(szoveg, arany = null) {
+      $('.fo-szoveg').textContent = szoveg || '';
+      $('.fo-sav').hidden = arany == null;
+      if (arany != null) $('.fo-sav span').style.width = Math.round(Math.max(0, Math.min(1, arany)) * 100) + '%';
+    },
+    close() {
+      back.remove();
+      if (!document.querySelector('.modal-back')) document.body.classList.remove('modal-open');
+    },
+  };
+}
+
 /**
  * modal({ title, body, actions:[{label, kind, value, onClick}], wide })
  * Visszaad: { el, close, done } – a done egy Promise, ami a gomb value-jával (vagy null-lal) teljesül.
@@ -124,10 +131,10 @@ export function modal({ title, body, actions = [], wide = false, onMount }) {
     close(val);
   };
   // Esc csak a legfelső ablakra hat (megerősítő ablak nyitva lehet felette)
-  // (nyitott legördülő / találati lista esetén az Esc csak azt zárja be)
+  // (nyitott legördülő esetén az Esc csak azt zárja be)
   const onKey = e => {
     if (e.key !== 'Escape' || [...document.querySelectorAll('.modal-back')].pop() !== back) return;
-    if (document.querySelector('.popover') || back.querySelector('.picker-list')) return;
+    if (document.querySelector('.popover')) return;
     cancel(null);
   };
   document.addEventListener('keydown', onKey);
@@ -171,8 +178,7 @@ export function confirmDialog(title, text, okLabel = 'OK', kind = 'primary') {
 
 /**
  * Szabad szöveges mező, amely felajánlja a korábbi / lehetséges értékeket (a böngésző beépített
- * javaslatlistája, <datalist>): gépeléskor szűr, de bármi beírható. Ellenőrzött listához (kategória,
- * mértékegység, raktár) NEM ez kell, hanem a listSelect (common.js).
+ * javaslatlistája, <datalist>): gépeléskor szűr, de bármi beírható.
  */
 let dlSeq = 0;
 export function suggestInput(name, value, values, placeholder = '') {
@@ -256,11 +262,6 @@ export function popover(anchor, content, { onMount, onClose, minWidth } = {}) {
 /** Űrlap szekció címmel. layout: 'grid' (több oszlop) vagy 'col' (egymás alatt). */
 export function sec(title, body, layout = 'grid') {
   return html`<section class="fsec"><div class="fsec-title">${title}</div><div class="${layout === 'col' ? 'form-col' : 'form-grid'}">${body}</div></section>`;
-}
-
-/** Kis „?” súgó ikon: asztalon rámutatásra, érintőképernyőn koppintásra nyílik. */
-export function help(text) {
-  return html`<span class="help"><button type="button" class="help-btn" aria-label="Súgó" data-help>?</button><span class="help-pop" role="tooltip">${text}</span></span>`;
 }
 
 /** Rövid, ütközésmentes azonosító (pozíció, lépés, esemény). Állandó: soha nem írjuk át. */

@@ -18,6 +18,7 @@ var TerepLogic = (function () {
   var ESEMENY_TIPUSOK = { kesz: 1, visszavon: 1, hiba: 1, hiba_vege: 1, megj: 1 };
   var PROJEKT_ALLAPOT = { aktiv: 'Aktív', lezart: 'Lezárt' };
   var SZERELO_VISSZAVON_ORA = 24; // a szerelő a saját lépését ennyi órán belül vonhatja vissza (iroda / admin bármikor)
+  var VISSZA_NAP = 31;            // a szerelő / külsős bejegyzése legfeljebb ennyi nappal korábbi időpontú lehet (offline rögzítés)
 
   // Új lapnál ez az oszlopsorrend; a szerver a fejlécnevek alapján olvas és ír, így az oszlopok átrendezhetők.
   // Típusok: str (szöveg, max 2000), long (pl. JSON, max 40000), num, bool, date (ISO).
@@ -29,8 +30,9 @@ var TerepLogic = (function () {
       // oszlopok / tipus_oszlopok: a pozíciók további adatainak és a típusok tulajdonságainak oszlopnevei (JSON tömb)
       ['projekt_id', 'str'], ['nev', 'str'], ['ugyfel', 'str'], ['helyszin', 'str'], ['allapot', 'str'],
       ['oszlopok', 'long'], ['tipus_oszlopok', 'long'], ['letrehozva', 'date'], ['modositva', 'date']] },
+    // suly: a lépés súlya a készültségben (arányszám, pl. 60 / 30 / 10); ha a projekt minden lépésénél 0, egyenlő arányban számít
     Lepesek: { key: 'lepes_id', cols: [
-      ['lepes_id', 'str'], ['projekt_id', 'str'], ['sorrend', 'num'], ['nev', 'str'], ['szin', 'str']] },
+      ['lepes_id', 'str'], ['projekt_id', 'str'], ['sorrend', 'num'], ['nev', 'str'], ['szin', 'str'], ['suly', 'num']] },
     Rajzok: { key: 'rajz_id', cols: [
       // W, H: az oldal mérete pontban (rajzcserénél az összevetéshez); drive_id: a PDF a Drive-on (nem nyilvános)
       ['rajz_id', 'str'], ['projekt_id', 'str'], ['nev', 'str'], ['epulet', 'str'], ['szint', 'str'],
@@ -45,8 +47,13 @@ var TerepLogic = (function () {
     // mikor: amikor a terepen történt (a készülék ideje); rogzitve: amikor a szerver megkapta
     Esemenyek: { key: 'esemeny_id', cols: [
       ['esemeny_id', 'str'], ['poz_id', 'str'], ['projekt_id', 'str'], ['tipus', 'str'], ['lepes_id', 'str'],
-      ['ki', 'str'], ['ki_nev', 'str'], ['mikor', 'date'], ['rogzitve', 'date'], ['megj', 'str']] }
+      ['ki', 'str'], ['ki_nev', 'str'], ['mikor', 'date'], ['rogzitve', 'date'], ['megj', 'str']] },
+    // Fotók a bejegyzésekhez (hiba, megjegyzés, lépés): a kép a Drive-on (drive_id: ~1600 px, kis_id: előnézet ~320 px)
+    Fotok: { key: 'foto_id', cols: [
+      ['foto_id', 'str'], ['esemeny_id', 'str'], ['poz_id', 'str'], ['projekt_id', 'str'], ['drive_id', 'str'], ['kis_id', 'str'],
+      ['ki', 'str'], ['ki_nev', 'str'], ['mikor', 'date'], ['rogzitve', 'date'], ['meret', 'num'], ['torolve', 'date']] }
   };
+  var MAX_FOTO_ESEMENYENKENT = 5;
   var TABLES = Object.keys(SCHEMA);
 
   /* ---------- Típuskonverzió ---------- */
@@ -179,9 +186,10 @@ var TerepLogic = (function () {
     var out = {
       Projektek: exportRows(proj),
       Lepesek: exportRows((db.Lepesek || []).filter(function (l) { return ids[l.projekt_id]; })),
-      Felhasznalok: (db.Felhasznalok || []).map(function (u) {
-        return hasRole(user, 'admin') ? exportRows([u])[0] : { email: u.email, nev: u.nev };
-      })
+      // Felhasználók: csak az admin kapja a teljes listát (felhasználókezelés); másnak csak a saját sora jut le – a nevek a
+      // bejegyzésekben (ki_nev) vannak, így a teljes névsor / e-mail-lista (pl. egy külsős cégnek) felesleges lenne
+      Felhasznalok: hasRole(user, 'admin') ? exportRows(db.Felhasznalok || [])
+        : (db.Felhasznalok || []).filter(function (u) { return u.email === user.email; }).map(function (u) { return { email: u.email, nev: u.nev }; })
     };
     if (projektId && ids[projektId]) {
       var mine = function (r) { return r.projekt_id === projektId; };
@@ -190,6 +198,7 @@ var TerepLogic = (function () {
       out.Poziciok = exportRows((db.Poziciok || []).filter(function (p) { return mine(p) && !p.torolve; }));
       out.Tipusok = exportRows((db.Tipusok || []).filter(mine));
       out.Esemenyek = exportRows((db.Esemenyek || []).filter(mine));
+      out.Fotok = exportRows((db.Fotok || []).filter(function (f) { return mine(f) && !f.torolve; }));
     }
     return out;
   }
@@ -216,6 +225,7 @@ var TerepLogic = (function () {
       case 'esemeny': opEsemeny(db, op, user, nowIso, changes); break;
       case 'esemenyek': opEsemenyek(db, op, user, nowIso, changes); break;
       case 'felhasznalo_mentes': opFelhasznalo(db, op, user, changes); break;
+      case 'foto_torles': opFotoTorles(db, op, user, nowIso, changes); break;
       default: fail('Ismeretlen művelet.');
     }
     return changes;
@@ -242,7 +252,7 @@ var TerepLogic = (function () {
     need(user, 'admin');
     var id = op.projekt_id;
     if (!get(db, 'Projektek', id)) return; // már törölve (idempotens)
-    ['Lepesek', 'Rajzok', 'Poziciok', 'Tipusok', 'Esemenyek'].forEach(function (t) {
+    ['Lepesek', 'Rajzok', 'Poziciok', 'Tipusok', 'Esemenyek', 'Fotok'].forEach(function (t) {
       var k = SCHEMA[t].key;
       (db[t] || []).filter(function (r) { return r.projekt_id === id; }).map(function (r) { return r[k]; })
         .forEach(function (rid) { remove(db, t, rid, changes); });
@@ -268,7 +278,8 @@ var TerepLogic = (function () {
       .map(function (l) { return l.lepes_id; }).forEach(function (id) { remove(db, 'Lepesek', id, changes); });
     list.forEach(function (l, i) {
       put(db, 'Lepesek', { lepes_id: l.lepes_id, projekt_id: op.projekt_id, sorrend: i + 1, nev: str(l.nev, 100),
-        szin: /^#[0-9a-f]{6}$/i.test(String(l.szin)) ? l.szin : '#9aa1aa' }, changes);
+        szin: /^#[0-9a-f]{6}$/i.test(String(l.szin)) ? l.szin : '#9aa1aa',
+        suly: Math.round(Math.max(0, Math.min(1000, toNum(l.suly))) * 10) / 10 }, changes);
     });
   }
   /** Rajz adatai (iroda): név, épület, szint. (Új rajz és PDF-csere a szerver rajz_feltoltes műveletével.) */
@@ -303,6 +314,12 @@ var TerepLogic = (function () {
   }
   /** Terepi (szerelő / külsős) jelölés-e: felmérés vagy hibajelzés – ezeket a szerelő is létrehozhatja, módosíthatja. */
   function terepi(fajta) { return fajta === 'felmeres' || fajta === 'hiba'; }
+  /** Meglévő terepi jelölést a szerelő / külsős csak a sajátját módosíthatja / helyezheti át (mint a törlésnél); az iroda bármelyiket. */
+  function sajatTerepi(ex, user) {
+    if (terepi(ex.fajta) && !hasRole(user, 'iroda') && String(ex.letrehozta).toLowerCase() !== String(user.email).toLowerCase()) {
+      fail('Csak a saját jelölésedet módosíthatod.');
+    }
+  }
 
   /**
    * Pozíciók mentése (új vagy meglévő; op.rows: több sor egyben, pl. beillesztéskor). Csak a megadott mezők íródnak
@@ -318,6 +335,7 @@ var TerepLogic = (function () {
       needProjekt(db, user, projektId);
       var fajta = ex ? ex.fajta : (own(FAJTAK, r.fajta) ? r.fajta : 'pozicio');
       need(user, terepi(fajta) ? 'kulsos' : 'iroda');
+      if (ex) sajatTerepi(ex, user);
       if (ex && ex.torolve) fail('A pozíció már törölve.');
       var row = { poz_id: r.poz_id, modositva: now };
       mezok.forEach(function (m) { if (r[m] !== undefined) row[m] = str(r[m], m === 'jel' ? 60 : 200); });
@@ -348,6 +366,7 @@ var TerepLogic = (function () {
     if (!ex || ex.torolve) fail('Ismeretlen pozíció.');
     needProjekt(db, user, ex.projekt_id);
     need(user, terepi(ex.fajta) ? 'kulsos' : 'iroda');
+    sajatTerepi(ex, user);
     if (op.rajz_id) {
       var r = get(db, 'Rajzok', op.rajz_id);
       if (!r || r.projekt_id !== ex.projekt_id) fail('Ismeretlen rajz.');
@@ -451,6 +470,11 @@ var TerepLogic = (function () {
     }
     var mikor = toDate(e.mikor), nowMs = Date.parse(now);
     if (!mikor || Date.parse(mikor) > nowMs + 10 * 60000) mikor = now;
+    // Visszadátumozás: a szerelő / külsős legfeljebb VISSZA_NAP napra (offline munka) – egy már elszámolt időszakba ne
+    // kerülhessen utólag bejegyzés; az iroda (pl. pótlás) bármikorra
+    if (!hasRole(user, 'iroda') && Date.parse(mikor) < nowMs - VISSZA_NAP * 86400000) {
+      fail('A bejegyzés időpontja legfeljebb ' + VISSZA_NAP + ' nappal korábbi lehet.');
+    }
     if (e.tipus === 'visszavon' && !hasRole(user, 'iroda')) {
       var utolso = null;
       (db.Esemenyek || []).concat(koteg || []).forEach(function (x) { if (x.poz_id === p.poz_id && x.lepes_id === lepes && x.tipus === 'kesz') utolso = x; });
@@ -462,6 +486,36 @@ var TerepLogic = (function () {
     return { esemeny_id: e.esemeny_id, poz_id: p.poz_id, projekt_id: p.projekt_id, tipus: e.tipus, lepes_id: lepes,
       ki: user.email, ki_nev: user.nev || user.email, mikor: mikor, rogzitve: now, megj: str(e.megj, 1000) };
   }
+  /**
+   * Új fotó sora (a feltöltéskor a szerver hívja, mielőtt a képet a Drive-ra írja). A fotó egy bejegyzéshez tartozik, amelynek
+   * már a szerveren kell lennie; csak a bejegyzés rögzítője (vagy az iroda) csatolhat hozzá, bejegyzésenként legfeljebb
+   * MAX_FOTO_ESEMENYENKENT. Visszaad: a sor (drive_id nélkül), vagy null, ha ez a fotó már megvan (idempotens).
+   */
+  function fotoSor(db, user, f, now) {
+    f = f || {};
+    checkId(f.foto_id);
+    if (get(db, 'Fotok', f.foto_id)) return null;
+    var e = get(db, 'Esemenyek', f.esemeny_id);
+    if (!e) fail('A bejegyzés még nincs a szerveren.');
+    needProjekt(db, user, e.projekt_id);
+    need(user, 'kulsos');
+    if (String(e.ki).toLowerCase() !== String(user.email).toLowerCase() && !hasRole(user, 'iroda')) fail('Csak a saját bejegyzésedhez csatolhatsz fotót.');
+    var n = (db.Fotok || []).filter(function (x) { return x.esemeny_id === e.esemeny_id && !x.torolve; }).length;
+    if (n >= MAX_FOTO_ESEMENYENKENT) fail('Egy bejegyzéshez legfeljebb ' + MAX_FOTO_ESEMENYENKENT + ' fotó tartozhat.');
+    var mikor = toDate(f.mikor);
+    if (!mikor || Date.parse(mikor) > Date.parse(now) + 10 * 60000) mikor = now;
+    return { foto_id: f.foto_id, esemeny_id: e.esemeny_id, poz_id: e.poz_id, projekt_id: e.projekt_id, drive_id: '', kis_id: '',
+      ki: user.email, ki_nev: user.nev || user.email, mikor: mikor, rogzitve: now, meret: 0, torolve: '' };
+  }
+  /** Fotó törlése (jelöléssel; a szerver a Drive-fájlt a kukába teszi): a sajátját bárki, másét az iroda. */
+  function opFotoTorles(db, op, user, now, changes) {
+    var ex = get(db, 'Fotok', op.foto_id);
+    if (!ex || ex.torolve) return;
+    needProjekt(db, user, ex.projekt_id);
+    if (String(ex.ki).toLowerCase() !== String(user.email).toLowerCase()) need(user, 'iroda');
+    put(db, 'Fotok', { foto_id: ex.foto_id, torolve: now }, changes);
+  }
+
   /** Felhasználó felvétele / módosítása (admin). A saját admin szerepét nem veheti el (kizárás ellen). */
   function opFelhasznalo(db, op, user, changes) {
     need(user, 'admin');
@@ -479,6 +533,6 @@ var TerepLogic = (function () {
   return {
     ROLES: ROLES, ROLE_LABELS: ROLE_LABELS, FAJTAK: FAJTAK, PROJEKT_ALLAPOT: PROJEKT_ALLAPOT, SCHEMA: SCHEMA, TABLES: TABLES,
     normalize: normalize, jsonOf: jsonOf, hasRole: hasRole, lathatja: lathatja, snapshot: snapshot, applyOp: applyOp,
-    get: get, exportRows: exportRows, checkId: checkId
+    get: get, exportRows: exportRows, checkId: checkId, fotoSor: fotoSor, MAX_FOTO_ESEMENYENKENT: MAX_FOTO_ESEMENYENKENT
   };
 })();

@@ -4,6 +4,7 @@
 import { html, raw, fmtDate } from '../ui.js';
 import * as D from '../data.js';
 import { markerSvg } from '../marker.js';
+import { ICONS } from '../icons.js';
 import { natCompare, pageHead } from './common.js';
 import { EV_TEXT, showPozicio, pozNev } from './pozicio.js';
 
@@ -18,13 +19,15 @@ function render(view, params, ctx) {
 
   // Bontás épület / szint szerint (lerakott: a rajz helye; lerakatlan: a lista szerinti hely)
   const helyek = new Map();
-  const hely = (e, sz) => { const k = `${e}\u0000${sz}`; if (!helyek.has(k)) helyek.set(k, { e, sz, n: 0, lerakatlan: 0, cnt: new Map(), hiba: 0 }); return helyek.get(k); };
+  const hely = (e, sz) => { const k = `${e}\u0000${sz}`; if (!helyek.has(k)) helyek.set(k, { e, sz, n: 0, lerakatlan: 0, cnt: new Map(), hiba: 0, ertek: 0 }); return helyek.get(k); };
+  const resz = D.reszesedes();
   for (const poz of D.poziciok(D.aktivId(), 'pozicio')) {
     const r = poz.rajzId && D.getRajz(poz.rajzId);
     if (!r) { const h = hely(poz.epulet || '', poz.szint || ''); h.n++; h.lerakatlan++; continue; }
     const a = D.allapot(poz.id), h = hely(r.epulet || '', r.szint || '');
     const k = a.lepes ? a.lepes.id : '';
     h.n++; h.cnt.set(k, (h.cnt.get(k) || 0) + 1); if (a.hiba) h.hiba++;
+    h.ertek += D.pozKeszultseg(poz.id, resz);
   }
   const helySorok = [...helyek.values()].sort((a, b) => natCompare(a.e, b.e) || natCompare(a.sz, b.sz));
   const vanHely = helySorok.some(h => h.e || h.sz);
@@ -50,20 +53,21 @@ function render(view, params, ctx) {
     </div>
     <section class="card">
       <div class="card-head"><h2 class="grow">Készültség</h2>
-        <b>${ossz ? Math.round(kesz / ossz * 100) : 0}%</b><span class="muted small">${utolsoLepes ? utolsoLepes.nev.toLowerCase() : ''} · ${kesz} / ${ossz}</span></div>
+        <b class="kesz-pct" title="Súlyozott készültség: a kész lépések a súlyuk arányában számítanak (Projekt → Műveletsor)">${Math.round(s.keszultseg * 100)}%</b>
+        <span class="muted small">${utolsoLepes ? `${utolsoLepes.nev.toLowerCase()}: ${kesz} / ${ossz} (${ossz ? Math.round(kesz / ossz * 100) : 0}%)` : ''}</span></div>
       <div class="card-pad">${ossz ? sav(s.cnt, s.lerakatlan, 'big') : html`<p class="muted" style="margin:0">Még nincs pozíció – tölts be pozíciólistát (Pozíciók oldal, „Beillesztés Excelből”), vagy rakj le jelölőket egy rajzon.</p>`}
         <p class="small muted" style="margin:.6rem 0 0">${s.rajz} rajz · ${s.lerakva} pozíció lerakva · ${D.tipusok().length} típus definiálva${s.felmeres || s.hibajel ? ` · ${s.felmeres} felmérés, ${s.hibajel} hibajelölés` : ''}</p></div>
     </section>
     ${vanHely ? html`<section class="card">
       <div class="card-head"><h2>Épület és szint szerint</h2></div>
       <div class="table-wrap"><table class="tbl cards nochk">
-        <thead><tr><th>Hely</th><th class="num">Pozíció</th><th>Állapot</th><th class="num">Kész</th><th class="num">Hiba</th></tr></thead>
-        <tbody>${helySorok.map(h => { const kk = utolsoLepes ? h.cnt.get(utolsoLepes.id) || 0 : 0; return html`
+        <thead><tr><th>Hely</th><th class="num">Pozíció</th><th>Állapot</th><th class="num" title="Súlyozott készültség">Készültség</th><th class="num">Hiba</th></tr></thead>
+        <tbody>${helySorok.map(h => { return html`
           <tr class="click" tabindex="0" data-href="${ctx.purl(`poziciok?epulet=${encodeURIComponent(h.e)}&szint=${encodeURIComponent(h.sz)}`)}">
             <td class="c-main">${D.helySzoveg(h.e, h.sz) || html`<span class="muted">Hely nélkül</span>`}</td>
             <td class="c-f1 num" data-l="Pozíció">${h.n}</td>
             <td class="c-meta">${sav(h.cnt, h.lerakatlan, 'mini')}</td>
-            <td class="c-f2 num" data-l="Kész">${h.n ? Math.round(kk / h.n * 100) : 0}%</td>
+            <td class="c-f2 num" data-l="Készültség">${h.n ? Math.round(h.ertek / h.n * 100) : 0}%</td>
             <td class="c-f3 num" data-l="Hiba">${h.hiba ? html`<span class="t-err">${h.hiba}</span>` : '–'}</td>
           </tr>`; })}</tbody>
       </table></div>
@@ -73,6 +77,7 @@ function render(view, params, ctx) {
         <div class="card-head"><h2>Nyitott hibák</h2></div>
         ${hibak.length ? html`<ul class="list">${hibak.map(({ x, a }) => html`<li class="list-item"><button type="button" class="list-main list-btn" data-id="${x.id}">
           <b>${pozNev(x)}</b> <span class="t-err">${a.hiba.megj || 'nincs leírás'}</span>
+          ${D.fotok(a.hiba.id).length ? html`<span class="foto-jel" title="Fotó">${ICONS.camera}${D.fotok(a.hiba.id).length}</span>` : ''}
           <span class="sub">${a.hiba.ki || '?'} · ${fmtDate(a.hiba.mikor, true)} · ${D.getRajz(x.rajzId).nev}</span></button></li>`)}</ul>`
           : html`<p class="empty">Nincs nyitott hiba.</p>`}
       </section>

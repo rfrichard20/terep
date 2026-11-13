@@ -72,6 +72,10 @@ class RemoteBackend {
     return { verzio: Number(r.verzio) || 1, bytes: fromBase64(r.data) };
   }
   rajzFeltoltes(token, rajz, bytes) { return this.call({ action: 'rajz_feltoltes', token, rajz, data: toBase64(bytes) }, UPLOAD_TIMEOUT); }
+  /** Fotó feltöltése: foto = { foto_id, esemeny_id, mikor }; full / kicsi: JPEG ArrayBuffer. → { foto } */
+  fotoFeltoltes(token, foto, full, kicsi) { return this.call({ action: 'foto_feltoltes', token, foto, data: toBase64(full), kicsi: toBase64(kicsi) }, UPLOAD_TIMEOUT); }
+  /** Egy fotó (vagy előnézete) → ArrayBuffer. */
+  async foto(token, fotoId, kicsi) { return fromBase64((await this.call({ action: 'foto', token, foto_id: fotoId, kicsi: !!kicsi })).data); }
 }
 
 /* ===================== Helyi mód ===================== */
@@ -163,6 +167,24 @@ class HelyiBackend {
     this.version = String(Date.now());
     await this.save();
     return { ok: true, rajz: L.exportRows([ex || row])[0], version: this.version };
+  }
+  /** Mint a szerver foto_feltoltes művelete; a képek a készüléken: 'helyifoto:<id>' = { full, kicsi }. */
+  async fotoFeltoltes(token, foto, full, kicsi) {
+    await this.load();
+    const row = L.fotoSor(this.db, this.user(), foto, new Date().toISOString());
+    if (!row) return { ok: true, foto: L.exportRows([L.get(this.db, 'Fotok', foto.foto_id)])[0] };
+    await idb.set('helyifoto:' + row.foto_id, { full, kicsi });
+    Object.assign(row, { drive_id: 'helyi', kis_id: 'helyi', meret: full.byteLength });
+    (this.db.Fotok = this.db.Fotok || []).push(row);
+    this.db._idx = null;
+    this.version = String(Date.now());
+    await this.save();
+    return { ok: true, foto: L.exportRows([row])[0] };
+  }
+  async foto(token, fotoId, kicsi) {
+    const k = await idb.get('helyifoto:' + fotoId);
+    if (!k) throw new Error('A fotó nem található.');
+    return kicsi ? k.kicsi : k.full;
   }
 }
 

@@ -80,10 +80,23 @@ function bitmapCanvas(bitmap) {
   return c;
 }
 
+/**
+ * A koppintást követő (a böngésző által szintetizált) kattintás elnyelése rövid ideig, az egész oldalon (rögzítő fázisban).
+ * Érintésnél a kattintás a felengedés után érkezik, és az addigra megnyílt ablak elemére esne.
+ */
+let nyelIdo = null;
+const nyel = e => { e.stopPropagation(); e.preventDefault(); };
+function nyelKattintast(ms = 450) {
+  clearTimeout(nyelIdo);
+  window.addEventListener('click', nyel, true);
+  nyelIdo = setTimeout(() => window.removeEventListener('click', nyel, true), ms);
+}
+
 export class Viewer {
   /**
    * host: a néző tárolóeleme. doc: openPdf eredménye.
-   * opts: { onTap(x, y), onMarkerTap(id), onMarkerMove(id, x, y), canDrag() } – x, y az oldalhoz viszonyított arány.
+   * opts: { onTap(x, y), onMarkerTap(id), onMarkerMove(id, x, y), canDrag(), canSelect(), onSelectRect(x0, y0, x1, y1) }
+   * – x, y az oldalhoz viszonyított arány.
    */
   constructor(host, doc, opts) {
     this.host = host; this.doc = doc; this.opts = opts;
@@ -448,6 +461,9 @@ export class Viewer {
     } else if (!this.ptrs.size && g) {
       if (g.type === 'rect') this.endRect(p);
       else if (g.type === 'pending' && normal) {
+        // A koppintás után a böngésző ugyanarra a pontra egy „click”-et is küld – addigra a megnyílt ablak (pl. a pozíció
+        // adatlapja) gombja lehet ott, és az lefutna (pl. egy lépés rögzítése). Ezt a kattintást elnyeljük.
+        nyelKattintast();
         if (g.mk) this.opts.onMarkerTap(g.mk);
         else {
           const r = this.toRel(p);

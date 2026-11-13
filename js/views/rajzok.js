@@ -1,7 +1,7 @@
 // Rajzok oldal (projekten belül): épület szerint csoportosítva, szint szerint rendezve, rajzonként állapotsávval.
 // PDF megnyitása / mintarajz; a rajz adatai (név, épület, szint) feltöltés után és a ceruza gombbal adhatók meg.
 // Az épület/szint mezők a pozíciólista értékeit kínálják (egységes jelölés → lerakáskor csak az ott lévő pozíciók).
-import { html, modal, confirmDialog, toast, fmtNum, fmtDate, formValues, suggestInput } from '../ui.js';
+import { html, modal, confirmDialog, toast, fmtNum, fmtDate, formValues, suggestInput, folyamat, fmtMB } from '../ui.js';
 import * as D from '../data.js';
 import { ICONS } from '../icons.js';
 import { openPdf } from '../viewer.js';
@@ -21,7 +21,7 @@ function render(view, params, ctx) {
   const iroda = D.jog('iroda');
   view.innerHTML = String(html`
     ${pageHead('Rajzok', iroda ? html`
-      <label class="btn btn-primary">${ICONS.upload}PDF megnyitása…<input type="file" id="file" accept="application/pdf,.pdf" hidden></label>
+      <label class="btn btn-primary" title="Egy vagy több PDF (több fájl egyszerre is kijelölhető)">${ICONS.upload}PDF feltöltése…<input type="file" id="file" accept="application/pdf,.pdf" multiple hidden></label>
       <button class="btn" id="minta">Mintarajz</button>` : '')}
     ${list.length ? csoportok.map(g => html`<section class="card">
         ${g.k !== null ? html`<div class="card-head"><h2>${g.k ? `${g.k} épület` : 'Épület megadása nélkül'}</h2></div>` : ''}
@@ -31,7 +31,7 @@ function render(view, params, ctx) {
     <p class="small muted page-note">${D.helyi ? 'Helyi mód: minden adat (a rajzok is) csak ezen a készüléken, a böngészőben tárolódik.'
       : 'A rajzok a szerverről töltődnek le, és a készüléken is megmaradnak (internet nélkül is megnyithatók). Új rajz feltöltéséhez internet kell.'}</p>`);
 
-  view.querySelector('#file')?.addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f, ctx); });
+  view.querySelector('#file')?.addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importFiles(fs, ctx); });
   view.querySelector('#minta')?.addEventListener('click', () => importMinta(ctx));
   view.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', async () => {
     const r = D.getRajz(b.dataset.edit);
@@ -111,7 +111,7 @@ const mm = (W, H) => `${Math.round(W * 25.4 / 72)} × ${Math.round(H * 25.4 / 72
  */
 async function rajzCsere(r, f) {
   const bytes = await f.arrayBuffer();
-  if (!/^%PDF-/.test(new TextDecoder().decode(new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 5))))) { toast('Ez nem PDF fájl', 'error'); return; }
+  if (!pdfE(bytes)) { toast('Ez nem PDF fájl', 'error'); return; }
   let uj, regi = { W: r.W, H: r.H };
   try {
     const d = await openPdf(bytes); uj = { W: d.W, H: d.H, pages: d.pages }; d.destroy();
@@ -127,33 +127,86 @@ async function rajzCsere(r, f) {
       : `Az új rajz mérete és aránya is eltér. ${meretek} A rajzon lévő ${n} jelölő elcsúszhat: a csere után át kell helyezni őket (Szerkesztés mód, húzással).`;
   if (!await confirmDialog(`Rajz cseréje – ${r.nev}`, szoveg + (uj.pages > 1 ? ` (A PDF ${uj.pages} oldalas, csak az első oldal kerül be.)` : ''),
     azonos ? 'Csere' : 'Csere mégis', azonos ? 'primary' : 'danger')) return;
-  if (!D.helyi) toast('Feltöltés a szerverre…');
-  try { await D.csereRajz(r.id, bytes, { W: uj.W, H: uj.H }); } catch (e) { toast(e.message, 'error', 8000); return; }
+  const fo = folyamat('Rajz cseréje');
+  fo.set(D.helyi ? 'Mentés…' : `Feltöltés a szerverre (${fmtMB(bytes.byteLength)})…`);
+  try { await D.csereRajz(r.id, bytes, { W: uj.W, H: uj.H }); } catch (e) { fo.close(); toast(e.message, 'error', 8000); return; }
+  fo.close();
   toast(`A rajz cserélve (${D.getRajz(r.id).verzio}. verzió)`, 'ok');
 }
 
-async function importBytes(nev, bytes, ctx) {
-  if (!/^%PDF-/.test(new TextDecoder().decode(new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 5))))) {
-    toast('Ez nem PDF fájl', 'error'); return;
+const pdfE = bytes => /^%PDF-/.test(new TextDecoder().decode(new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 5))));
+
+/**
+ * Rajzok feltöltése (egy vagy több fájl): egymás után, folyamatjelzővel. Egy rajznál utána az adatai (épület, szint) és a rajz
+ * megnyílik; többnél egy közös táblázatban adhatók meg az adatok. A hibás fájlok kimaradnak (a végén összesítve).
+ * fajlok: [{ nev, bytes() → Promise<ArrayBuffer> }]
+ */
+async function feltoltes(fajlok, ctx) {
+  const fo = folyamat(fajlok.length > 1 ? `${fajlok.length} rajz feltöltése` : 'Rajz feltöltése');
+  const kesz = [], hibak = [], tobbOldalas = [];
+  for (let i = 0; i < fajlok.length; i++) {
+    const f = fajlok[i], elo = fajlok.length > 1 ? `${i + 1} / ${fajlok.length}: ${f.nev}` : f.nev;
+    try {
+      fo.set(`${elo} – beolvasás…`, i / fajlok.length);
+      const bytes = await f.bytes();
+      if (!pdfE(bytes)) throw new Error('nem PDF fájl');
+      let doc;
+      try { doc = await openPdf(bytes); } catch { throw new Error('a PDF nem nyitható meg'); }
+      const meret = { W: doc.W, H: doc.H }; // a későbbi rajzcseréhez (méret-összevetés)
+      if (doc.pages > 1) tobbOldalas.push(f.nev);
+      doc.destroy();
+      fo.set(D.helyi ? `${elo} – mentés…` : `${elo} – feltöltés a szerverre (${fmtMB(bytes.byteLength)})…`, (i + 0.3) / fajlok.length);
+      kesz.push(await D.addRajz(f.nev, bytes, meret));
+    } catch (e) {
+      hibak.push(`${f.nev}: ${e.message}`);
+      if (e.network) break; // nincs kapcsolat: a többit sem érdemes próbálni
+    }
   }
-  let doc;
-  try { doc = await openPdf(bytes); } catch (e) { console.error(e); toast('A PDF nem nyitható meg', 'error'); return; }
-  if (doc.pages > 1) toast(`A PDF ${doc.pages} oldalas – csak az első oldal jelenik meg`, 'warn', 6000);
-  const meret = { W: doc.W, H: doc.H }; // a későbbi rajzcseréhez (méret-összevetés)
-  doc.destroy();
-  if (!D.helyi) toast('Feltöltés a szerverre…');
-  let r;
-  try { r = await D.addRajz(nev, bytes, meret); } catch (e) { toast(e.message, 'error', 8000); return; }
-  await rajzAdatai(r, 'Új rajz – adatok'); // Mégse esetén is megmarad, később pótolható
-  ctx.pgo('rajz/' + r.id);
+  fo.close();
+  if (hibak.length) toast(`Nem sikerült (${hibak.length}): ${hibak.join(' · ')}`, 'error', 10000);
+  if (tobbOldalas.length) toast(`Többoldalas PDF – csak az első oldal jelenik meg: ${tobbOldalas.join(', ')}`, 'warn', 8000);
+  if (!kesz.length) return;
+  if (kesz.length === 1) {
+    await rajzAdatai(kesz[0], 'Új rajz – adatok'); // Mégse esetén is megmarad, később pótolható
+    ctx.pgo('rajz/' + kesz[0].id);
+    return;
+  }
+  toast(`${kesz.length} rajz feltöltve`, 'ok');
+  await rajzokAdatai(kesz.map(r => r.id));
+  ctx.rerender();
 }
-async function importFile(f, ctx) {
-  toast('Rajz betöltése…');
-  await importBytes(f.name.replace(/\.pdf$/i, ''), await f.arrayBuffer(), ctx);
+
+/** Több rajz adatai egy táblázatban (tömeges feltöltés után): megnevezés, épület, szint. */
+async function rajzokAdatai(ids) {
+  const ep = D.listaErtekek('epulet').sort(natCompare), sz = D.listaErtekek('szint').sort(natCompare);
+  await modal({
+    title: `Új rajzok – adatok (${ids.length})`,
+    wide: true,
+    body: html`<p class="small muted" style="margin-top:0">Az épület és a szint később is megadható (ceruza gomb). Ha egyezik a pozíciólista jelölésével,
+      lerakáskor csak az ott lévő pozíciókat kínálja fel.</p>
+      <div class="table-wrap"><table class="tbl rajz-adatok"><thead><tr><th>Megnevezés</th><th>Épület</th><th>Szint</th></tr></thead>
+      <tbody>${ids.map(id => { const r = D.getRajz(id); return html`<tr data-id="${id}">
+        <td><input data-k="nev" value="${r.nev}" maxlength="120" aria-label="Megnevezés" autocomplete="off"></td>
+        <td>${suggestInput('epulet-' + id, r.epulet, ep, 'pl. A')}</td>
+        <td>${suggestInput('szint-' + id, r.szint, sz, 'pl. 1A')}</td></tr>`; })}</tbody></table></div>`,
+    actions: [{ label: 'Később', value: null }, { label: 'Mentés', kind: 'primary', onClick: async el => {
+      for (const tr of el.querySelectorAll('tr[data-id]')) {
+        const id = tr.dataset.id, r = D.getRajz(id);
+        const v = { nev: tr.querySelector('[data-k=nev]').value.trim() || r.nev,
+          epulet: tr.querySelector(`[name="epulet-${id}"]`).value.trim(), szint: tr.querySelector(`[name="szint-${id}"]`).value.trim() };
+        if (v.nev !== r.nev || v.epulet !== r.epulet || v.szint !== r.szint) await D.updateRajz(id, v);
+      }
+      toast('Mentve', 'ok');
+    } }],
+  }).done;
 }
+
+const importFiles = (files, ctx) => feltoltes([...files].map(f => ({ nev: f.name.replace(/\.pdf$/i, ''), bytes: () => f.arrayBuffer() })), ctx);
 async function importMinta(ctx) {
-  const res = await fetch('minta/minta_alaprajz.pdf');
-  if (!res.ok) { toast('A mintarajz nem tölthető be', 'error'); return; }
-  await importBytes('Mintarajz – 2. emelet (szintetikus)', await res.arrayBuffer(), ctx);
+  await feltoltes([{ nev: 'Mintarajz – 2. emelet (szintetikus)', bytes: async () => {
+    const res = await fetch('minta/minta_alaprajz.pdf');
+    if (!res.ok) throw new Error('a mintarajz nem tölthető be');
+    return res.arrayBuffer();
+  } }], ctx);
 }
 export default { render };
