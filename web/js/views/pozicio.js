@@ -100,7 +100,7 @@ function body(id, opts, fuggo = []) {
   const allapotSzoveg = !lepeses ? D.FAJTAK[poz.fajta] : egy ? (a && a.lepes ? a.lepes.nev : 'Nincs elkezdve') // a: csak lerakott pozíciónál van állapot
     : kartyak.length ? `${kartyak.length} elem` : 'Nincs eleme';
   const head = html`<div class="detail-head">
-      <div class="detail-hero" style="--st:${j.szin}">
+      <div class="detail-hero ${!lerakva || j.szin === D.SZIN_NINCS ? 'st-semleges' : ''}" style="--st:${j.szin}">
         <div class="hero-label">${!lepeses ? D.FAJTAK[poz.fajta] : egy ? (t.kategoria ? t.kategoria.nev : 'Típus') : 'Pozíció'}</div>
         <div class="hero-value">${lepeses && egy ? t.tipus || '–' : poz.jel || '–'}</div>
         <div class="hero-status">${lerakva ? html`${raw(markerSvg(j, 16))}&nbsp;${allapotSzoveg}

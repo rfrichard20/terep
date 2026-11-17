@@ -215,6 +215,9 @@ tr.click:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
   border-radius: 5px; line-height: 1.4; background: var(--surface); color: var(--text); white-space: nowrap; }
 
 .hero-status { flex-wrap: wrap; }
+/* Adatlap fejléce: ha nincs valódi állapotszín (nincs lerakva / nincs elkezdve), a szürke csík marad, a szöveg semleges (olvasható) */
+.detail-hero.st-semleges .hero-value { color: var(--text); }
+.detail-hero.st-semleges .hero-status { color: var(--muted); }
 
 /* Szűrő-címke (pl. a Pozíciók oldalon a rajzszűrő), Raktár .chip */
 .chip { max-width: 100%; }

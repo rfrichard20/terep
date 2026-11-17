@@ -252,7 +252,7 @@ pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrte
 - `.list`/`.list-item`/`.list-main`, `.btn-row`, `.chips` (számozott), `.kv`; Pozíciók: `.st-cell`, `.tipus-chip`; `.contents`; `td.m-hide` (mobilon rejtett cella)
 - Projekt: `.proj-grid`, `.proj-card` (`.cur`, `.off`), `.proj-top`, `.proj-nev`, `.proj-num`, `.proj-bar` (állapotsáv lépésszínekkel; `.mini` a rajzsoron),
   `.hely-chip` (épület · szint), `.nav-proj` (projekt az oldalsávban); `.ptitle small` (projekt a felső sávban)
-- Raktárból: adatlap `.detail-head` / `.detail-hero` (`--st` = állapotszín, csak a csík) / `.hero-label|value|status|levels` / `.facts` /
+- Raktárból: adatlap `.detail-head` / `.detail-hero` (`--st` = állapotszín: csík, érték, állapot szövege; `.st-semleges`: nincs lerakva / nincs elkezdve → a szöveg semleges) / `.hero-label|value|status|levels` / `.facts` /
   `.detail-actions` / `.sec-h`; felugró `.popover` / `.pop-item` / `.nav-pop`; `.nav-more` / `.nav-extra` (mobil „Több”); `.chip` (`.on`)
 - Áttekintő: `.proj-meta`, `.proj-bar.big`, `.att-grid`, `a.stat`, `.list-btn`; fejléc: asztalon `.topbar .brand` az oldalsáv szélességében
 - Néző: `.stage` (`.rendering` → „Élesítés…”), `.world`, `.base`, `.dlayer`, `.mlayer`, `.kiv-keret` (kivágás kerete, kívül sötétítve), `.mk` / `.mk-ring` / `.mk-label`, `.zoom-ctl`, `.stage-hint`, `.stage-msg`
