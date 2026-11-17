@@ -36,13 +36,13 @@
 | `web/js/foto.js` | Fotók: `kepKeszit(file)` → `{ full (1600 px), kicsi (360 px) }` JPEG (a telefonon kicsinyít, EXIF-tájolással), `elonezetek(root)` (`img[data-foto]` betöltése), `fotoSor(fotok)` (előnézet-sor HTML), `fotoNezo(ids, i, onChange)` (teljes képernyős nézegető, lapozás, törlés) |
 | `web/js/data.js` | Adatréteg a felületnek: olvasás a store modelljéből, írás műveletekkel (`store.enqueue`), állapot az eseménynaplóból |
 | `web/js/marker.js` | `markerSvg({ szin, mind, hiba, fajta, szegmensek }, size)` – egyszínű állapotjelölő (pipa, ha minden kész; piros gyűrű + „!”, ha hiba; több elemnél ívek a kör körül elemenként) |
-| `web/js/ui.js` | A Raktár `ui.js`-éből: `html` sablon, modális ablak, értesítés, formázás (+ `uid`) |
-| `web/js/idb.js` | A Raktár `idb.js`-éből: kulcs-érték tár (IndexedDB `terep`, tartalék: localStorage `terep_`) |
-| `web/js/theme.js` | A Raktár `theme.js`-éből: téma (`terep_theme`) + keretbe ágyazás elleni védelem; `window.TerepTheme` |
+| `web/kozos/` | **KÖZÖS fájlok** (Raktárral közös; forrásuk a `..\Kozos_Claude` repó, itt nem szerkeszthetők – módosítás ott, majd `Kozos_Claude\szinkron.ps1`). Jegyzékük: `..\Kozos_Claude\FEJLESZTES.md`. `ui.js` (html sablon, modal, popover, toast, formázás, keresés), `idb.js` (`createStore`), `theme.js` (téma `terep_theme` + keretbe ágyazás elleni védelem; `window.AppTheme`), `kozos.css` (Poppins, színtokenek, alapelemek, segédosztályok), `fonts/` |
+| `web/js/ui.js` | Újraexportálja a `kozos/ui.js`-t (a nézetek innen importálnak) + a Terep saját segédei: `folyamat`, `fmtMB`, `uid` |
+| `web/js/idb.js` | A közös tár Terep-példánya: `createStore('terep', 'terep_')` (IndexedDB `terep`, tartalék: localStorage `terep_`) |
 | `web/vendor/pdfium/` | PDFium WebAssembly (@embedpdf/pdfium 2.14.4; MIT + PDFium BSD-3) – nem módosítjuk |
 | `eszkozok/mintarajz.ps1` | A szintetikus tesztrajz (`web/minta/minta_alaprajz.pdf`) előállítója |
 
-## JS – `ui.js` (Raktárból átvett; a Terepben nem használt Raktár-segédek – dátummező, számértelmezés, súgó ikon – törölve)
+## JS – `ui.js` (a közös `kozos/ui.js` + a Terep saját segédei; a közösek leírása: `..\Kozos_Claude\FEJLESZTES.md`)
 
 - `html\`...\`` – escape-elő sablon; `raw(s)` – megbízható HTML beillesztése (pl. saját SVG); `esc(s)`
 - `modal({ title, body, actions, wide, onMount })` → `{ el, close, done }`; mobilon teljes képernyős.
@@ -237,8 +237,9 @@ műveletei (`TerepLogic.applyOp` a böngészőben) → `store.state.db` → `mod
 
 ## CSS – `web/css/app.css`
 
-Felső rész: a Raktár `app.css` alapjai változatlanul (betűk, tokenek, sötét mód, `.btn*`, `.icon-btn`, `.badge-*`,
-mezők, `.field`, `.fsec`, `.form-col`, `.form-grid`, `.opt`/`.opt-list`, `.modal*`, `.toast*`, segédosztályok).
+A betűk, a színtokenek (sötét móddal), az alapelemek és a segédosztályok a közös `web/kozos/kozos.css`-ben vannak (előbb töltődik be).
+Felső rész: a Raktár `app.css` komponensei (`.btn*`, `.icon-btn`, `.badge-*`, mezők, `.field`, `.fsec`, `.form-col`, `.form-grid`,
+`.opt`/`.opt-list`, `.modal*`, `.toast*`) – az egységesítésük a Kozos_Claude következő lépése.
 Alsó rész (Terep):
 
 - Elrendezés (Raktár): `.topbar`, `.brand`/`.wordmark`, `.ptitle`, `.back-btn`, `.nav` (asztalon oldalsáv, ≤899 px alsó sáv;
@@ -290,7 +291,8 @@ Alsó rész (Terep):
 
 - `Code.gs` (a Raktár Code.gs-éből): `doPost` műveletek `login`, `adatok` (projektenként, `version`-nel), `szinkron` (`ops`, zárolással),
   `rajz_pdf` (base64), `rajz_feltoltes` (új rajz / PDF-csere, új verzió; a régi fájl „(régi vN)” néven marad); munkamenet
-  (`login`, `tokenEmail`, `sign`, `safeEqual`, `throttleLogin`), Sheet I/O (`readAll`, `readTable`, `writeChanges`, `toCell` –
+  (`login`, `tokenEmail`, `sign`, `safeEqual`, `throttleLogin`, adatverzió, `json`, `authError` – a közös **`Kozos.gs`**-ben, forrása a
+  Kozos_Claude; itt nem szerkeszthető), Sheet I/O (`readAll`, `readTable`, `writeChanges`, `toCell` –
   képletvédelem), Drive: `rajzMappa()` (`RAJZ_MAPPA_ID`) → `projektMappa(proj)` (projektenként, `MAPPA_<projekt_id>`, a neve követi a
   projekt nevét) → `regiMappa()` („Régi verziók”: a rajzcsere előtti fájlok); `rajzokRendezese()` (menü: a meglévő fájlok mappákba rendezése),
   `torolRajzFajlok` (törölt rajz → kuka; törölt projekt → a mappája is; törölt fotó → kuka), `setup()`, menü (`onOpen`).

@@ -9,6 +9,9 @@
 - Fejlesztés a helyi szerveren (`.claude/launch.json` → „terep”, http://localhost:8081); az élesítést a felhasználó végzi.
   Minden változtatást asztali és mobil (375 px) nézetben is ellenőrizni kell.
 - `web/` változásakor `web/sw.js` `VERSION` +1.
+- **Közös kód:** a `web/kozos/` mappa és az `apps-script/Kozos.gs` a Raktárral közös, forrásuk a `..\Kozos_Claude` repó –
+  **itt nem szerkeszthetők**. Módosítás a Kozos_Claude-ban, majd `Kozos_Claude\szinkron.ps1`, és mindkét appban kipróbálni.
+  Új, app-független segédet / stílust is oda kell tenni (jegyzék: `..\Kozos_Claude\FEJLESZTES.md`).
 - Közös origin a Raktárral (GitHub Pages): minden localStorage-kulcs `terep_` előtagú, az IndexedDB neve `terep`,
   a service worker gyorsítótára `terep-` előtagú, és csak a saját (előtagú) gyorsítótárait törölheti.
 - **Valódi ügyfélrajz nem kerülhet a `web/` mappába** (az nyilvános lesz). Helyi teszthez a `rajzok/` mappa való

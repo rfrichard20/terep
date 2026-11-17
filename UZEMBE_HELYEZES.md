@@ -13,6 +13,7 @@ A Google-belépéshez a **Raktár OAuth kliense** használható (közös Google-
 3. Fájlok:
    - a `Kód.gs` / `Code.gs` tartalmát cseréld le az `apps-script/Code.gs` tartalmára;
    - **+ → Szkript**: `Logic` nevű fájl, tartalma az `apps-script/Logic.gs`;
+   - ugyanígy egy `Kozos` nevű fájl az `apps-script/Kozos.gs` tartalmával (bejelentkezés, munkamenet – a Raktárral közös kód);
    - **Projektbeállítások** (fogaskerék) → „Az appsscript.json jegyzékfájl megjelenítése” bekapcsolva, majd az
      `appsscript.json` tartalmát cseréld le a repó `apps-script/appsscript.json` tartalmára. Mentés.
 4. Első futtatás: függvényválasztó → `setup` → **Futtatás**. Engedélyt kér (Sheet, külső kérés, **Drive**, e-mail);
@@ -51,7 +52,7 @@ fájlok a projekt „Régi verziók” almappájába, a fotók a projekt „Fot�
 A fotók adatai a Sheet `Fotok` lapján (az első feltöltéskor jön létre, vagy a Terep → Táblák létrehozása menüvel). A korábban feltöltött fájlokat a Sheet **Terep → Rajzok mappákba rendezése**
 menüpontja egyszer rendezi el (többször is futtatható).
 
-**A `Code.gs` / `Logic.gs` minden későbbi módosítása után:** Telepítés → Telepítések kezelése → ceruza →
+**A `Code.gs` / `Logic.gs` / `Kozos.gs` minden későbbi módosítása után:** Telepítés → Telepítések kezelése → ceruza →
 Verzió: **Új verzió** → Telepítés. Az URL nem változik.
 
 ## 4. A webes felület összekötése a szerverrel

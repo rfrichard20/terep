@@ -93,7 +93,7 @@ function render(view, params, ctx) {
         <div class="card-head"><h2>Beállítások</h2></div>
         <div class="card-pad">
           <div class="kv"><span>Téma</span><select id="theme" aria-label="Téma">
-            ${[['auto', 'Automatikus'], ['light', 'Világos'], ['dark', 'Sötét']].map(([v, l]) => html`<option value="${v}" ${window.TerepTheme.get() === v ? raw('selected') : ''}>${l}</option>`)}
+            ${[['auto', 'Automatikus'], ['light', 'Világos'], ['dark', 'Sötét']].map(([v, l]) => html`<option value="${v}" ${window.AppTheme.get() === v ? raw('selected') : ''}>${l}</option>`)}
           </select></div>
         </div>
       </section>
@@ -107,7 +107,7 @@ function render(view, params, ctx) {
     try { window.google?.accounts?.id?.disableAutoSelect(); } catch { /* */ }
     await S.logout();
   });
-  $('#theme').addEventListener('change', e => window.TerepTheme.set(e.target.value));
+  $('#theme').addEventListener('change', e => window.AppTheme.set(e.target.value));
   $('.narrow').addEventListener('click', async e => {
     const d = e.target.closest('[data-dobd]'), ok = e.target.closest('[data-ok]');
     if (d) {
