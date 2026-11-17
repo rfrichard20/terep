@@ -237,10 +237,11 @@ műveletei (`TerepLogic.applyOp` a böngészőben) → `store.state.db` → `mod
 
 ## CSS – `web/css/app.css`
 
-A betűk, a színtokenek (sötét móddal), az alapelemek és a segédosztályok a közös `web/kozos/kozos.css`-ben vannak (előbb töltődik be).
-Felső rész: a Raktár `app.css` komponensei (`.btn*`, `.icon-btn`, `.badge-*`, mezők, `.field`, `.fsec`, `.form-col`, `.form-grid`,
-`.opt`/`.opt-list`, `.modal*`, `.toast*`) – az egységesítésük a Kozos_Claude következő lépése.
-Alsó rész (Terep):
+A betűk, a színtokenek (sötét móddal), az alapelemek és a **közös komponensek** (keret: felső sáv, menü; kártya, `.stat`, gombok,
+jelvények, mezők, `.fsec`, `.opt`, szűrősor, kereső, `.tbl` / `.tbl.cards` / `.jelol`, `.chip`, `.notice`, adatlap-fejléc, `.popover`,
+`.modal`, toast, `.login`) a közös `web/kozos/kozos.css`-ben vannak (előbb töltődik be; itt nem szerkeszthetők – jegyzék:
+`..\Kozos_Claude\FEJLESZTES.md`). Az `app.css` csak a Terep saját elemeit és eltéréseit tartalmazza (azonos szelektorral felülírva,
+pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrtek kijelölése”). Az alábbi lista a régi felosztást is jelzi:
 
 - Elrendezés (Raktár): `.topbar`, `.brand`/`.wordmark`, `.ptitle`, `.back-btn`, `.nav` (asztalon oldalsáv, ≤899 px alsó sáv;
   `.nav-bottom`), `.view`, `.narrow` (keskeny oldaltartalom), `.page-note`; `body.drawing` (teljes képernyős néző, mobilon menü nélkül), `body.edit`
