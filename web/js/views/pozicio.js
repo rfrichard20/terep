@@ -97,7 +97,7 @@ function body(id, opts, fuggo = []) {
   // Adatlista: egy elemnél minden (hely + típus + elem), több elemnél csak a hely adatai (az elemeké a kártyákon)
   const tenyek = egy || !kartyak.length ? t.adatok : Object.entries(poz.adatok || {}).filter(([, v]) => String(v ?? '').trim());
   // Egyelemes helynél a fejrész a régi (típus, méret, lépésszám); több elemnél a jel és az elemek száma
-  const allapotSzoveg = !lepeses ? D.FAJTAK[poz.fajta] : egy ? (a.lepes ? a.lepes.nev : 'Nincs elkezdve')
+  const allapotSzoveg = !lepeses ? D.FAJTAK[poz.fajta] : egy ? (a && a.lepes ? a.lepes.nev : 'Nincs elkezdve') // a: csak lerakott pozíciónál van állapot
     : kartyak.length ? `${kartyak.length} elem` : 'Nincs eleme';
   const head = html`<div class="detail-head">
       <div class="detail-hero" style="--st:${j.szin}">
