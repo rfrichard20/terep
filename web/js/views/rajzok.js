@@ -2,7 +2,7 @@
 // PDF megnyitása / mintarajz; a rajz adatai (név, épület, szint, homlokzat) feltöltés után és a ceruza gombbal adhatók meg.
 // Az épület/szint/homlokzat mezők a pozíciólista értékeit kínálják (egységes jelölés → lerakáskor csak az ott lévő pozíciók).
 // Homlokzati rajz: a homlokzat megadva (a szint általában üres) – lerakáskor az épület és a homlokzat szerinti pozíciók.
-import { html, modal, confirmDialog, toast, fmtNum, fmtDate, formValues, suggestInput, folyamat, fmtMB } from '../ui.js';
+import { html, raw, modal, confirmDialog, toast, fmtNum, fmtDate, formValues, suggestInput, folyamat, fmtMB } from '../ui.js';
 import * as D from '../data.js';
 import { ICONS } from '../icons.js';
 import { openPdf } from '../viewer.js';
@@ -22,18 +22,35 @@ function render(view, params, ctx) {
     g.rajzok.push(r);
   }
   const iroda = D.jog('iroda');
+  const all = allapot();
+  // Alapból (amíg a felhasználó nem váltott): egy épületnél nyitva; többnél csak az utoljára megnyitott rajz épülete
+  const nyitva = k => (all.nyitva ? all.nyitva.includes(k) : csoportok.length === 1 || k === all.utolso);
   view.innerHTML = String(html`
     ${pageHead('Rajzok', iroda ? html`
       <label class="btn btn-primary" title="Egy vagy több PDF (több fájl egyszerre is kijelölhető)">${ICONS.upload}PDF feltöltése…<input type="file" id="file" accept="application/pdf,.pdf" multiple hidden></label>
       <button class="btn" id="minta">Mintarajz</button>` : '')}
-    ${list.length ? csoportok.map(g => html`<section class="card">
-        ${g.k !== null ? html`<div class="card-head"><h2>${g.k ? `${g.k} épület` : 'Épület megadása nélkül'}</h2></div>` : ''}
-        <ul class="list">${g.rajzok.map(r => sor(r, ctx, iroda))}</ul>
-      </section>`)
+    ${csoportok.length > 1 ? html`<p class="csop-gombok"><button type="button" class="link-btn" data-csop="nyit">Mind kinyit</button> · <button type="button" class="link-btn" data-csop="zar">Mind összecsuk</button></p>` : ''}
+    ${list.length ? csoportok.map(g => (g.k === null
+      ? html`<section class="card"><ul class="list">${g.rajzok.map(r => sor(r, ctx, iroda))}</ul></section>`
+      : csoport(g, nyitva(g.k), ctx, iroda)))
       : html`<section class="card"><p class="empty">Ebben a projektben még nincs rajz.${iroda ? ' Nyiss meg egy egyoldalas PDF-et a készülékről, vagy próbáld ki a mintarajzot.' : ''}</p></section>`}
     <p class="small muted page-note">${D.helyi ? 'Helyi mód: minden adat (a rajzok is) csak ezen a készüléken, a böngészőben tárolódik.'
       : 'A rajzok a szerverről töltődnek le, és a készüléken is megmaradnak (internet nélkül is megnyithatók). Új rajz feltöltéséhez internet kell.'}</p>`);
 
+  view.addEventListener('click', e => {
+    const sum = e.target.closest('summary.csop-fej');
+    if (sum) { // a kattintás a váltás előtt fut: a mostani állapot ellentettje az új
+      const d = sum.parentElement, ny = new Set([...view.querySelectorAll('details.csop[open]')].map(x => x.dataset.k));
+      if (d.open) ny.delete(d.dataset.k); else ny.add(d.dataset.k);
+      ment({ ...all, nyitva: [...ny] });
+      return;
+    }
+    const g = e.target.closest('[data-csop]');
+    if (!g) return;
+    const nyit = g.dataset.csop === 'nyit';
+    view.querySelectorAll('details.csop').forEach(d => { d.open = nyit; });
+    ment({ ...all, nyitva: nyit ? [...view.querySelectorAll('details.csop')].map(d => d.dataset.k) : [] });
+  });
   view.querySelector('#file')?.addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importFiles(fs, ctx); });
   view.querySelector('#minta')?.addEventListener('click', () => importMinta(ctx));
   view.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', async () => {
@@ -68,10 +85,9 @@ function pdfInfo(r) {
 /** Másolat jelölése a név előtt (ugyanabból a PDF-ből készült rajz). */
 const masolatIkon = r => (r.forras ? html`<span class="ico-inline masolat-ikon" title="Másolat – a PDF-je közös a(z) „${(D.getRajz(r.forras) || {}).nev || ''}” rajzzal"
   aria-label="Másolat">${ICONS.copy}</span> ` : '');
-/** Egy rajz sora: név, hely, pozíciószám, állapotsáv (lépésszínekkel), szerkesztés, törlés. */
-function sor(r, ctx, iroda) {
-  // Az állapotsáv a kiválasztott termékfajta szerint (helyenként a legkevésbé kész elem)
-  const poz = D.rajzPoziciok(r.id), lep = D.lepesek(), kat = D.fajta();
+/** Egy rajz pozíciói, állapotszámai a kiválasztott termékfajta szerint (helyenként a legkevésbé kész elem) és hibái. */
+function rajzAdat(r) {
+  const poz = D.rajzPoziciok(r.id), kat = D.fajta();
   const cnt = new Map();
   let hiba = 0;
   for (const p of poz) {
@@ -79,13 +95,54 @@ function sor(r, ctx, iroda) {
     if (k !== null) cnt.set(k, (cnt.get(k) || 0) + 1);
     if (D.helyHiba(p.id)) hiba++;
   }
+  return { poz, cnt, hiba };
+}
+/** Állapotsáv (lépésszínekkel) az állapotszámokból. */
+function allapotSav(cnt) {
   const seg = (n, szin, cim) => (n ? html`<span style="flex:${n};background:${szin}" title="${cim}: ${n}"></span>` : '');
+  return html`<span class="proj-bar mini" aria-hidden="true">${D.lepesek().slice().reverse().map(l => seg(cnt.get(l.id) || 0, l.szin, l.nev))}${seg(cnt.get('') || 0, D.SZIN_NINCS, 'Nincs elkezdve')}</span>`;
+}
+/** Épület csoportja: összecsukható; a fejlécen a rajzok száma, összesített állapotsáv és hibaszám. */
+function csoport(g, nyitva, ctx, iroda) {
+  const ossz = new Map();
+  let poz = 0, hiba = 0;
+  for (const r of g.rajzok) {
+    const a = rajzAdat(r);
+    poz += a.poz.length; hiba += a.hiba;
+    for (const [k, n] of a.cnt) ossz.set(k, (ossz.get(k) || 0) + n);
+  }
+  return html`<details class="card csop" data-k="${g.k}" ${nyitva ? raw('open') : ''}>
+    <summary class="card-head csop-fej"><span class="csop-nyil" aria-hidden="true"></span>
+      <div class="grow csop-cim"><h2>${g.k ? `${g.k} épület` : 'Épület megadása nélkül'}</h2>${poz ? allapotSav(ossz) : ''}</div>
+      <span class="small muted csop-szam">${g.rajzok.length} rajz${hiba ? html` · <span class="t-err">${hiba} hiba</span>` : ''}</span></summary>
+    <ul class="list">${g.rajzok.map(r => sor(r, ctx, iroda))}</ul>
+  </details>`;
+}
+/** Összecsukott / nyitott épületek projektenként (localStorage terep_rajzok): { nyitva: [épület…] (ha a felhasználó váltott), utolso: épület }. */
+const CSOP_KEY = 'terep_rajzok';
+function allapot() {
+  try { return (JSON.parse(localStorage.getItem(CSOP_KEY)) || {})[D.aktivId()] || {}; } catch { return {}; }
+}
+function ment(a) {
+  try { const o = JSON.parse(localStorage.getItem(CSOP_KEY)) || {}; o[D.aktivId()] = a; localStorage.setItem(CSOP_KEY, JSON.stringify(o)); } catch { /* */ }
+}
+/** A rajz oldal hívja megnyitáskor: ez az épület lesz a „legutóbb nyitott” (és nyitva marad a listán). */
+export function epuletMegnyitva(epulet) {
+  const a = allapot(), k = epulet || '';
+  a.utolso = k;
+  if (a.nyitva && !a.nyitva.includes(k)) a.nyitva = [...a.nyitva, k];
+  ment(a);
+}
+
+/** Egy rajz sora: név, hely, pozíciószám, állapotsáv (lépésszínekkel), szerkesztés, törlés. */
+function sor(r, ctx, iroda) {
+  const { poz, cnt, hiba } = rajzAdat(r);
   return html`<li class="list-item">
     <a class="list-main" href="${ctx.purl('rajz/' + r.id)}">
       <b class="d-block ellipsis">${D.rajzHely(r) ? html`<span class="hely-chip">${D.rajzHely(r)}</span>` : ''}${masolatIkon(r)}${r.nev}</b>
       <span class="sub">${poz.length} pozíció${hiba ? html` · <span class="t-err">${hiba} hiba</span>` : ''}${r.kivagas ? ' · kivágás' : ''}</span>
       <span class="sub ellipsis d-block" title="A feltöltött PDF">${pdfInfo(r)}</span>
-      ${poz.length ? html`<span class="proj-bar mini" aria-hidden="true">${lep.slice().reverse().map(l => seg(cnt.get(l.id) || 0, l.szin, l.nev))}${seg(cnt.get('') || 0, D.SZIN_NINCS, 'Nincs elkezdve')}</span>` : ''}
+        ${poz.length ? allapotSav(cnt) : ''}
     </a>
     <a class="icon-btn" href="${ctx.purl('poziciok?rajz=' + r.id)}" aria-label="A rajz pozíciói" title="A rajz pozíciói (lista)">${ICONS.list}</a>
     ${iroda ? html`<button class="icon-btn" data-edit="${r.id}" aria-label="Rajz adatai" title="Név, épület, szint, homlokzat">${ICONS.edit}</button>

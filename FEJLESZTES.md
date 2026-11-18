@@ -17,7 +17,7 @@
 | `web/js/views/projekt.js` | A kiválasztott projekt: adatok, állapot, pozíciólista, műveletsor termékfajtánként (`editLepesek(onDone, kat)`, „+ Termékfajta”: `ujFajta`; `lepesSzerkeszto(regi, sablonok)` → `{ body, mount, ertek }` – a lépéssor-szerkesztő, a Termékfajták oldal is ezt használja), Hozzáférés kártya (admin: ki látja; `editHozzaferes` – a korlátozott felhasználók jelölőnégyzettel), törlés |
 | `web/js/icons.js` | `ICONS` – vonalas SVG ikonok (a Raktár stílusában) |
 | `web/js/views/common.js` | Közös: `enterSubmits`, `ensureNev` / `editNev`, `tetelBlokk`, `meretSzoveg`, `natCompare`, `pageHead`, `fajtaValaszto(pid, id)` + `bindFajta(root, ctx, id)` (termékfajta-választó, ha a projektben több fajta van) |
-| `web/js/views/rajzok.js` | Rajzok oldal: épület szerint csoportosítva, állapotsáv; PDF feltöltése (több fájl is: `feltoltes(fajlok)` folyamatjelzővel, utána `rajzokAdatai(ids)` – táblázat), mintarajz; `rajzAdatai(r, cím, { csere })` (név, épület, szint, PDF cseréje); `rajzCsere` (méret-összevetés) |
+| `web/js/views/rajzok.js` | Rajzok oldal: épület szerint csoportosítva, az épületek összecsukhatók (`csoport`, `rajzAdat`, `allapotSav`; állapot: `terep_rajzok` projektenként; alapból több épületnél csak a `epuletMegnyitva(epulet)` – a rajz oldal hívja – szerinti legutóbbi nyitva), állapotsáv; PDF feltöltése (több fájl is: `feltoltes(fajlok)` folyamatjelzővel, utána `rajzokAdatai(ids)` – táblázat), mintarajz; `rajzAdatai(r, cím, { csere })` (név, épület, szint, PDF cseréje); `rajzCsere` (méret-összevetés) |
 | `web/js/views/rajz.js` | Rajz oldal: néző, Szerkesztés mód, szűrő és jelmagyarázat, új pozíció (épület/szintre szűkítve), adatlap, ugrás pozícióra (`?poz=`) |
 | `web/js/views/poziciok.js` | Pozíciók oldal: lista + jelölők egyben, állapot-csempék, szűrő (típus, épület, szint), rendezhető táblázat → ugrás a rajzra |
 | `web/js/views/fiok.js` | Fiók: belépés adatai (helyi módban a név), szinkron, függő / elutasított műveletek, letöltött rajzok, kijelentkezés, téma |
@@ -80,7 +80,7 @@
 - `ensureNev()` / `editNev()` – a felhasználó nevének bekérése (csak helyi módban; szerveres módban a név a belépésből jön)
 - `tetelBlokk(poz, kompakt)` – a pozíció adatai (típus nagyban, méret, „További adatok” lenyitva); lerakáskor előnézet;
   `meretSzoveg(t)`, `natCompare(a, b)` (A1A-9 < A1A-10)
-- rajz.js: Szerkesztés mód (`body.edit`, `terep_szerk`); szűrő: `flt` (munkamenetre), `cimke` (`terep_cimke`: jel | tipus | mind | nincs),
+- rajz.js: Szerkesztés mód (ceruza gomb az eszközoszlop alján; `body.edit`; nincs tárolva: rajz elhagyásakor kikapcsol; a szerkesztő eszközök – kivágás, később több – a `#edit-tools` csoportban, csak bekapcsolt módban); szűrő: `flt` (munkamenetre), `cimke` (`terep_cimke`: jel | tipus | mind | nincs),
   `drawMarkers()` = `drawPanel()` + `applyMarkers()` (szűrőváltáskor csak `applyMarkers()` → a keresőmező fókusza megmarad); `focusPoz(pid)`
 - projekt.js: `editLepesek(onDone, kat)` – más oldalról is hívható (a kiválasztott projektre, termékfajtánként); mentés után `ajanlPotlas(kat)`:
   ha egy elemen egy későbbi lépés kész, de egy korábbi nem (új lépés beszúrása, átrendezés), felajánlja a pótlást (`D.hezagok`, `D.potolHezagok`)
@@ -245,7 +245,6 @@ pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrte
 
 - Elrendezés (Raktár): `.topbar`, `.brand`/`.wordmark`, `.ptitle`, `.back-btn`, `.nav` (asztalon oldalsáv, ≤899 px alsó sáv;
   `.nav-bottom`), `.view`, `.narrow` (keskeny oldaltartalom), `.page-note`; `body.drawing` (teljes képernyős néző, mobilon menü nélkül), `body.edit`
-- `.switch` – címkés natív jelölőnégyzet kapcsolóként (Szerkesztés)
 - Raktár-komponensek: `.page-head` (+ `.actions`), `.card` / `.card-head` / `.card-pad`, `.stats` / `.stat` (`button.stat`, `.sel`, `.err`, `.muted-stat`),
   `.toolbar` / `.card-toolbar`, `.search-wrap` / `.search-ico` / `.search-clear`, `.table-wrap`, `.tbl` (`th.sortable`, `tr.click`, `tr.off`),
   `.tbl.cards` (mobilon kártyák: `c-main`, `c-meta`, `c-act`, `c-f1…c-f4`, `data-l` címke), `.tbl-foot`, `.empty`
@@ -255,7 +254,7 @@ pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrte
 - Raktárból: adatlap `.detail-head` / `.detail-hero` (`--st` = állapotszín; a Terepben csak a csík színes, a szöveg mindig semleges – a lépésszín világos is lehet) / `.hero-label|value|status|levels` / `.facts` /
   `.detail-actions` / `.sec-h`; felugró `.popover` / `.pop-item` / `.nav-pop`; `.nav-more` / `.nav-extra` (mobil „Több”); `.chip` (`.on`)
 - Áttekintő: `.proj-meta`, `.proj-bar.big`, `.att-grid`, `a.stat`, `.list-btn`; fejléc: asztalon `.topbar .brand` az oldalsáv szélességében
-- Néző: `.stage` (`.rendering` → „Élesítés…”), `.world`, `.base`, `.dlayer`, `.mlayer`, `.kiv-keret` (kivágás kerete, kívül sötétítve), `.mk` / `.mk-ring` / `.mk-label`, `.zoom-ctl`, `.stage-hint`, `.stage-msg`
+- Néző: `.stage` (`.rendering` → „Élesítés…”), `.world`, `.base`, `.dlayer`, `.mlayer`, `.kiv-keret` (kivágás kerete, kívül sötétítve), `.mk` / `.mk-ring` / `.mk-label`, `.zoom-ctl` (eszközoszlop: nagyítás, kijelölés; alul a ceruza = Szerkesztés mód `data-z="edit"`), `.edit-tools` (szerkesztő eszközök csoportja, csak szerkesztés módban), `.edit-tool` (enyhe borostyán kiemelés), `.zoom-sep` (elválasztó vonal a normál és a szerkesztő gombok között), `.edit-keret` (a rajz körüli keret: szerkesztés módban borostyán, kijelölő módban kék – `body.edit` / `body.selmod`), `.stage-hint`, `.stage-msg`
 - `.legend` – szűrő és jelmagyarázat darabszámokkal (natív `<details>`, `.active` = szűrt), `.flt-body`, `.flt-row`, `.flt-sep`;
   `.mk-label:empty` rejtve („Címke: nincs”); `.dot` – lépés színpöttye
 - Tétel: `.tetel`, `.tetel-fo`, `.tetel-tipus`, `.tetel-meret`, `.tetel-tobb` (natív `<details>` + `<dl>`), `.tetel-nincs`
@@ -272,6 +271,7 @@ pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrte
 - `.fajta-val` – termékfajta-választó a fejlécben (a jelmagyarázatban teljes szélességű)
 - Fotók: `.foto-sor`, `.foto-kis` (`.fuggo` = feltöltésre vár), `.foto-ki`, `.foto-fuggo`, `.foto-jel` (fényképező + darab a listákon),
   `.foto-nezo`, `.foto-lap`, `.foto-info`
+- Rajzok lista: `.csop` (összecsukható épületcsoport), `.csop-fej`, `.csop-nyil`, `.csop-cim`, `.csop-szam`, `.csop-gombok`
 - Teljesítmény: `.telj-szuro-kartya`, `.telj-tbl` (pivot), `.telj-datum`, `.telj-tetel` (lenyitható tételes lista); Munkám: `.munkam-gyors` (nagy gyorsgombok)
 - `.ico-inline` – ikon folyó szövegben (a betűmérethez igazodik; ikon méret nélkül szövegben az egész oldalt kitöltené)
 - `--stage-bg` – a rajzlap körüli háttér
@@ -315,7 +315,7 @@ pl. `.topbar` a kijelzőkivágás miatt, a `.jelol` fejlécfelirata „A szűrte
 
 ## Tárolási kulcsok (közös origin a Raktárral → előtag kötelező)
 
-- localStorage: `terep_theme`, `terep_nev` (helyi mód: a naplóba kerülő név), `terep_szerk`, `terep_cimke`, `terep_projekt` (kiválasztott projekt),
+- localStorage: `terep_theme`, `terep_nev` (helyi mód: a naplóba kerülő név), `terep_legenda` (rajz jelmagyarázata nyitva / csukva), `terep_rajzok` (Rajzok lista: nyitott épületek projektenként), `terep_cimke`, `terep_projekt` (kiválasztott projekt),
   `terep_fajta` (`{ projekt-id: kategória-id }` – a kiválasztott termékfajta projektenként),
   `terep_kedvencek` (`{ email: [projekt-id…] }` – kedvenc projektek, eszközönként)
 - IndexedDB `terep` / `kv`:

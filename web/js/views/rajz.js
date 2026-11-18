@@ -8,20 +8,25 @@ import { Viewer, openPdf } from '../viewer.js';
 import { enterSubmits, tetelBlokk, natCompare, fajtaValaszto } from './common.js';
 import { showPozicio, pozNev } from './pozicio.js';
 import { tomegesMuvelet } from './tomeges.js';
+import { epuletMegnyitva } from './rajzok.js';
 
 const $ = s => document.querySelector(s);
 
-/* ---------- Szerkesztés mód (iroda: jelölő lerakása, áthelyezése, törlése) – kapcsoló a felső sávban ---------- */
-const EDIT_KEY = 'terep_szerk';
-const editBox = $('#edit-mode');
-const isEdit = () => editBox.checked && D.jog('iroda');
-try { editBox.checked = localStorage.getItem(EDIT_KEY) === '1'; } catch { /* */ }
-editBox.addEventListener('change', () => {
-  try { localStorage.setItem(EDIT_KEY, isEdit() ? '1' : '0'); } catch { /* */ }
+/* ---------- Szerkesztés mód (iroda: jelölő lerakása, áthelyezése, törlése) – ceruza gomb a rajz eszközoszlopának alján;
+ * a szerkesztő eszközök (.edit-tools: kivágás, később több) csak bekapcsolt módban látszanak ---------- */
+let editOn = false; // nem őrizzük meg: rajz bezárásakor kikapcsol, megnyitáskor mindig kézzel kell bekapcsolni (véletlen módosítás ellen)
+const isEdit = () => editOn && D.jog('iroda');
+function editKapcsol() {
+  editOn = !editOn;
   applyEdit();
-});
+}
 function applyEdit() {
-  document.body.classList.toggle('edit', isEdit() && !!current);
+  const be = isEdit() && !!current;
+  document.body.classList.toggle('edit', be);
+  const gomb = $('[data-z="edit"]');
+  if (gomb) { gomb.classList.toggle('on', be); gomb.setAttribute('aria-pressed', String(be)); }
+  const eszk = $('#edit-tools');
+  if (eszk) { eszk.classList.toggle('open', be); eszk.inert = !be; }
   const hint = $('#hint');
   if (hint) hint.innerHTML = jel.on || kiv.on ? '' : isEdit() ? '<span>Koppints a rajzra új pozícióhoz · a jelölőt húzva áthelyezheted</span>' : '';
 }
@@ -46,6 +51,7 @@ function jelolKapcsol(on, kozosElem = null) {
     }
   }
   $('[data-z="sel"]')?.classList.toggle('on', on);
+  document.body.classList.toggle('selmod', on); // kék keret + kék gomb: látszik, hogy kijelölő módban vagyunk
   applyEdit();
   applyMarkers();
 }
@@ -167,7 +173,7 @@ let loadSeq = 0;
 
 function close() {
   loadSeq++;
-  document.body.classList.remove('edit');
+  document.body.classList.remove('edit', 'selmod');
   jel.on = false; jel.sel.clear(); jel.kozos = null;
   kiv.on = false; kiv.rect = null;
   if (!current) return;
@@ -182,17 +188,23 @@ async function render(view, params, ctx) {
   const r = D.getRajz(id);
   if (!r || r.projektId !== ctx.pid) { ctx.pgo('rajzok'); return; }
   const seq = ++loadSeq;
+  epuletMegnyitva(r.epulet); // a Rajzok listán ez az épület lesz nyitva
   ctx.setTitle(D.rajzHely(r) ? `${D.rajzHely(r)} · ${r.nev}` : r.nev);
   // Kivágás mód: a teljes oldal látszik, a mostani kivágás kijelölve
   const kivMod = !!params.kivagas && D.jog('iroda');
   view.innerHTML = String(html`<div id="stage" class="stage"></div>
     <div class="kiv-keret" id="kiv-keret" hidden></div>
+    <div class="edit-keret" aria-hidden="true"></div>
     <div class="zoom-ctl">
       <button type="button" data-z="in" aria-label="Nagyítás" title="Nagyítás">${ICONS.plus}</button>
       <button type="button" data-z="out" aria-label="Kicsinyítés" title="Kicsinyítés">${ICONS.minus}</button>
       <button type="button" data-z="fit" aria-label="Teljes rajz" title="Teljes rajz">${ICONS.fit}</button>
       ${kivMod ? '' : html`<button type="button" data-z="sel" aria-label="Kijelölés (tömeges művelet)" title="Kijelölés (tömeges művelet)">${ICONS.check}</button>`}
-      ${D.jog('iroda') && !kivMod ? html`<button type="button" data-z="kiv" aria-label="Kivágás" title="Kivágás: csak a rajz egy része látsszon (vagy új rajz egy részéből)">${ICONS.crop}</button>` : ''}
+      ${D.jog('iroda') && !kivMod ? html`<hr class="zoom-sep" aria-hidden="true">
+      <div class="edit-tools" id="edit-tools" inert><div class="edit-tools-in">
+        <button type="button" class="edit-tool" data-z="kiv" aria-label="Kivágás" title="Kivágás: csak a rajz egy része látsszon (vagy új rajz egy részéből)">${ICONS.crop}</button>
+      </div></div>
+      <button type="button" class="edit-tool" data-z="edit" aria-pressed="false" aria-label="Szerkesztés mód" title="Szerkesztés mód: pozíció lerakása, áthelyezése, kivágás">${ICONS.edit}</button>` : ''}
     </div>
     <div class="legend" id="legend"></div>
     <div class="stage-hint" id="hint"></div>
@@ -222,7 +234,8 @@ async function render(view, params, ctx) {
     view.querySelector('.zoom-ctl').addEventListener('click', e => {
       const b = e.target.closest('[data-z]'); if (!b) return;
       if (b.dataset.z === 'sel') jelolKapcsol(!jel.on);
-      else if (b.dataset.z === 'kiv') location.hash = rajzUrl(id) + '?kivagas=1';
+      else if (b.dataset.z === 'edit') editKapcsol();
+      else if (b.dataset.z === 'kiv')location.hash = rajzUrl(id) + '?kivagas=1';
       else if (b.dataset.z === 'fit') viewer.resetView(); else viewer.zoomCenter(b.dataset.z === 'in' ? 1.6 : 1 / 1.6);
     });
     $('#selbar').addEventListener('click', async e => {
@@ -236,7 +249,7 @@ async function render(view, params, ctx) {
       else if (k === 'ures') { jel.sel.clear(); applyMarkers(); }
       else if (k === 'lat') jelolValt(viewer.visibleMarkerIds(), true);
       else if (k === 'kozos') await kozosMentes();
-      else if (k === 'muv' && await tomegesMuvelet([...jel.sel])) drawMarkers();
+      else if (k === 'muv' && await tomegesMuvelet([...jel.sel])) { jel.sel.clear(); drawMarkers(); } // a kijelölés törlődik, a mód marad (folytatható)
     });
     drawMarkers();
     await viewer.init();
@@ -272,6 +285,9 @@ const CIMKEK = { jel: 'Jel', tipus: 'Típus', mind: 'Jel · típus', nincs: 'Nin
 // off: kikapcsolt állapotok ('' = nincs elkezdve, különben lépés-id); vonal: a közös elemek vonalai látszanak
 const flt = { off: new Set(), hiba: false, tipus: '', q: '', vonal: true };
 let cimke = (() => { try { return localStorage.getItem(CIMKE_KEY) || 'jel'; } catch { return 'jel'; } })();
+// Jelmagyarázat nyitva / csukva: megmarad újrarajzoláskor, szerkesztés mód váltásakor és másik rajzra lépéskor is (null = még nem döntött: asztalon nyitva, mobilon csukva)
+const LEGENDA_KEY = 'terep_legenda';
+let legNyitva = (() => { try { const v = localStorage.getItem(LEGENDA_KEY); return v === null ? null : v === '1'; } catch { return null; } })();
 const szurt = () => flt.off.size || flt.hiba || flt.tipus || flt.q;
 function resetFilter() { flt.off.clear(); flt.hiba = false; flt.tipus = ''; flt.q = ''; }
 
@@ -332,8 +348,8 @@ function drawPanel() {
   const vonalak = D.kozosVonalak(current.id).length;
   const sor = (key, svg, nev, n) => html`<li><label><input type="checkbox" data-st="${key}" ${flt.off.has(key) ? '' : raw('checked')}>
     ${raw(svg)}<span>${nev}</span><b>${n || 0}</b></label></li>`;
-  // Első megjelenéskor asztalon nyitva, mobilon csukva (ott kell a hely a rajznak); utána marad, ahogy a felhasználó hagyta
-  const open = box.querySelector('details') ? box.querySelector('details').open : matchMedia('(min-width: 700px)').matches;
+  // Amíg a felhasználó nem döntött: asztalon nyitva, mobilon csukva (ott kell a hely a rajznak); utána marad, ahogy hagyta (legNyitva)
+  const open = legNyitva ?? matchMedia('(min-width: 700px)').matches;
   box.innerHTML = String(html`<details ${open ? raw('open') : ''}><summary id="flt-sum"></summary><div class="flt-body">
     <input type="search" id="flt-q" value="${flt.q}" placeholder="Keresés: jel, típus…" aria-label="Keresés jelre vagy típusra" autocomplete="off">
     ${fajtaValaszto(D.aktivId(), 'flt-fajta')}
@@ -369,6 +385,12 @@ function bindPanel(box) {
     else return;
     applyMarkers();
   };
+  // Csak a felhasználó nyitása / csukása számít (a címsorra kattintás a váltás előtt fut, ezért a mostani állapot ellentettje az új)
+  box.addEventListener('click', e => {
+    const sum = e.target.closest('summary'); if (!sum) return;
+    legNyitva = !sum.parentElement.open;
+    try { localStorage.setItem(LEGENDA_KEY, legNyitva ? '1' : '0'); } catch { /* */ }
+  });
   box.addEventListener('change', upd);
   box.addEventListener('input', e => { if (e.target.id === 'flt-q') upd(e); });
   box.addEventListener('click', e => {
@@ -438,4 +460,6 @@ function refresh() {
   drawMarkers();
 }
 
-export default { render, close, refresh };
+/** Elhagyáskor (másik rajz / oldal) a szerkesztés mód is kikapcsol; a belső close() adatfrissítéskor (refresh) is fut, ott marad. */
+function leave() { editOn = false; close(); }
+export default { render, close: leave, refresh };

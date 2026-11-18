@@ -139,7 +139,7 @@ async function render() {
     current = null;
     document.body.classList.add('belepes');
     document.body.classList.remove('drawing');
-    $('back').hidden = true; $('edit-toggle').hidden = true;
+    $('back').hidden = true;
     $('pproj').textContent = '';
     setTitle('Belépés');
     renderBelepes(view);
@@ -169,13 +169,12 @@ async function render() {
   const pageView = r.proj && !D.betoltve() ? nincsBetoltve : r.view;
   current = { name, params, view: pageView };
   renderNav(r.parent || name);
-  // Rajz nézet: teljes képernyős néző (mobilon alsó sáv nélkül), vissza gomb és Szerkesztés kapcsoló a felső sávban
-  // (a szerkesztés – lerakás, áthelyezés – az iroda joga)
+  // Rajz nézet: teljes képernyős néző (mobilon alsó sáv nélkül), vissza gomb a felső sávban
+  // (a Szerkesztés mód ceruza gombja a rajz eszközoszlopában van – a szerkesztés az iroda joga)
   const drawing = name === 'rajz' && pageView === r.view;
   document.body.classList.toggle('drawing', drawing);
   $('back').hidden = !drawing;
   if (drawing) $('back').href = purl('rajzok');
-  $('edit-toggle').hidden = !drawing || !D.jog('iroda');
   $('pproj').textContent = r.proj && D.projekt() ? D.projekt().nev : '';
   setTitle(r.label);
   window.scrollTo(0, 0);

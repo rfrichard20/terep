@@ -90,12 +90,6 @@ body.drawing .view { padding: 0; max-width: none; flex: 1; position: relative; m
 }
 @media (max-width: 899px) { body.drawing .nav { display: none; } }
 
-/* Kapcsoló (natív jelölőnégyzet, címkével): pl. Szerkesztés mód */
-.switch { display: inline-flex; align-items: center; gap: .45rem; font-weight: 600; font-size: .9rem; cursor: pointer;
-  padding: .3rem .7rem; min-height: 36px; border: 1px solid var(--border); border-radius: 999px; user-select: none; }
-.switch:has(input:checked) { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.switch input { width: 18px; height: 18px; }
-
 /* ===== Komponensek (a Raktár app.css-éből: oldalfejléc, kártya, összesítő, szűrősor, kereső, táblázat) ===== */
 
 .stat .l { display: flex; align-items: center; gap: .35rem; }
@@ -169,6 +163,18 @@ tr.click:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .telj-tetel > summary { cursor: pointer; list-style: none; }
 .telj-tetel > summary::-webkit-details-marker { display: none; }
 .telj-tetel[open] > summary .small { display: none; }
+/* Rajzok lista: összecsukható épületcsoport (natív <details>): nyíl, név + összesített állapotsáv, rajzszám / hibák */
+.csop > summary { cursor: pointer; list-style: none; flex-wrap: nowrap; }
+.csop > summary::-webkit-details-marker { display: none; }
+.csop:not([open]) > summary { border-bottom: 0; }
+.csop-nyil { flex: none; width: 8px; height: 8px; margin: 0 .35rem 0 .15rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg); transition: transform .15s ease; }
+.csop[open] > summary .csop-nyil { transform: rotate(45deg); }
+.csop-cim { min-width: 0; }
+.csop-cim h2 { margin: 0; }
+.csop-szam { flex: none; white-space: nowrap; }
+.csop-gombok { margin: 0 0 .6rem; font-size: .85rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .csop-nyil { transition: none; } }
 /* Munkám (külsős kezdőlap) */
 .munkam-gyors { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin-bottom: 1rem; }
 .munkam-gyors .btn { justify-content: center; min-height: 52px; font-size: 1rem; }
@@ -306,7 +312,28 @@ body.edit .mk-ring { cursor: move; }
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
 .zoom-ctl button:hover { background: var(--surface-2); }
 .zoom-ctl svg { width: 22px; height: 22px; }
-.zoom-ctl button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.zoom-ctl button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+/* Elválasztó a normál gombok és a szerkesztő csoport (eszközök + ceruza) között */
+.zoom-ctl .zoom-sep { align-self: center; width: 26px; height: 0; margin: 0; border: 0; border-top: 2px solid color-mix(in srgb, var(--text) 45%, transparent); border-radius: 1px; }
+/* Szerkesztő eszközök: enyhe, borostyán (--warn) kiemelés a nagyító / kijelölő gombokhoz képest; csak szerkesztés módban látszanak.
+   Be- és kikapcsoláskor a csoport magassága animálódik, így a fölötte lévő gombok is simán csúsznak (a ceruza helye állandó). */
+.edit-tools { display: grid; grid-template-rows: 0fr; margin-bottom: -6px; opacity: 0;
+  transition: grid-template-rows .2s ease, margin-bottom .2s ease, opacity .15s ease; }
+.edit-tools.open { grid-template-rows: 1fr; margin-bottom: 0; opacity: 1; }
+.edit-tools-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px;
+  padding: 0 8px 8px; margin: 0 -8px -8px; } /* a gombok árnyéka ne vágódjon le */
+.zoom-ctl .edit-tool { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
+.zoom-ctl .edit-tool:hover { background: color-mix(in srgb, var(--warn) 22%, var(--surface)); }
+.zoom-ctl .edit-tool.on { background: var(--warn); color: var(--surface); border-color: var(--warn); }
+/* Szerkesztés módban a rajz körül vékony, borostyán (--warn) keret (nem foglal helyet) */
+.edit-keret { position: absolute; inset: 0; z-index: 4; pointer-events: none; box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--warn) 70%, transparent); opacity: 0; transition: opacity .2s ease; }
+body.edit .edit-keret { opacity: 1; }
+/* Kijelölő mód: kék (--info) – a kijelölt jelölők is kékek; ha mindkét mód él, a kijelölés látszik (ilyenkor a szerkesztés úgyis szünetel) */
+body.selmod .edit-keret { opacity: 1; border-color: color-mix(in srgb, var(--info) 75%, transparent); }
+.zoom-ctl button[data-z="sel"].on { background: var(--info); color: var(--surface); border-color: var(--info); }
+@media (prefers-reduced-motion: reduce) { .edit-tools, .edit-keret { transition: none; } }
 /* Kijelölő mód a rajzon: kijelölt jelölő (kék gyűrű), húzott téglalap, alsó sáv */
 .mk.sel { z-index: 2; }
 .mk.sel::before { content: ''; position: absolute; left: 0; top: 0; width: 40px; height: 40px; box-sizing: border-box; border-radius: 50%;

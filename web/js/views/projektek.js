@@ -144,7 +144,6 @@ async function ujProjekt(ctx) {
       const v = formValues(el);
       if (!v.nev.trim()) { toast('Add meg a projekt nevét', 'warn'); return false; }
       const p = await D.addProjekt({ nev: v.nev.trim(), ugyfel: v.ugyfel.trim(), helyszin: v.helyszin.trim(), kategoria: v.kategoria });
-      kedvencValt(p.id); // az új projekt kedvenc lesz (gyakran ezzel dolgozik utána)
       ctx.go(`p/${p.id}/attekinto`);
     } }],
   }).done;
