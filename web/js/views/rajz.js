@@ -412,9 +412,11 @@ async function newPoz(rajzId, x, y) {
   const hely = { epulet: r.epulet, szint: r.szint, homlokzat: r.homlokzat };
   const szukit = D.RAJZ_HELY.some(sz => hely[sz] && D.vanOszlop(sz));
   const jelek = D.lerakatlan(D.aktivId(), hely).map(p => p.jel);
+  // Ha a rajz helyéhez (épület / szint / homlokzat) van még le nem rakott pozíció, az első javaslat előre be van írva
+  const elsoJavaslat = szukit && jelek.length ? jelek[0] : D.nextNev(rajzId);
   await modal({
     title: 'Pozíció lerakása',
-    body: html`<label class="field"><span>Pozíció jele</span>${suggestInput('nev', D.nextNev(rajzId), jelek, 'pl. A1A-114')}</label>
+    body: html`<label class="field"><span>Pozíció jele</span>${suggestInput('nev', elsoJavaslat, jelek, 'pl. A1A-114')}</label>
       <p class="small muted" style="margin:.4rem 0 0">${jelek.length} még le nem rakott pozíció
         ${szukit ? `itt: ${D.rajzHely(r)}` : 'a projektben'} – gépeléskor a javaslatok szűkülnek. Új jel esetén új pozíció jön létre.</p>
       <div id="np-tetel" style="margin-top:.75rem"></div>`,
@@ -430,6 +432,7 @@ async function newPoz(rajzId, x, y) {
       };
       inp.addEventListener('input', preview);
       preview();
+      if (szukit && jelek.length) inp.select(); // az előre beírt javaslat gépeléskor felülíródik
     },
     actions: [{ label: 'Mégse', value: null }, { label: 'Lerakás', kind: 'primary', onClick: async el => {
       const jel = formValues(el).nev.trim();
