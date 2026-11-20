@@ -47,6 +47,8 @@ body.belepes .view { grid-column: 1 / -1; }
 .nav-proj-l { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .nav-proj b { font-size: .95rem; }
 @media (max-width: 899px) { .nav-proj { display: none; } }
+/* Ikonos (összecsukott) oldalsáv: a projektblokk vékony elválasztó vonal (mint a .nav-group a közös CSS-ben) */
+@media (min-width: 900px) { body.nav-mini .nav .nav-proj { height: 0; margin: .5rem .6rem; padding: 0; overflow: hidden; border-top: 1px solid var(--border); } body.nav-mini .nav .nav-proj > * { display: none; } }
 /* Oldalsáv-szekció címe (a Raktár csoportcímei); a „Beállítások” az oldalsáv alján (.nav-bottom) */
 .nav-group { margin: .75rem 0 .25rem; padding: .5rem .9rem .3rem; border-top: 1px solid var(--border); font-size: .72rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }

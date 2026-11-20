@@ -45,6 +45,7 @@
 ## JS – `ui.js` (a közös `kozos/ui.js` + a Terep saját segédei; a közösek leírása: `..\Kozos_Claude\FEJLESZTES.md`)
 
 - `html\`...\`` – escape-elő sablon; `raw(s)` – megbízható HTML beillesztése (pl. saját SVG); `esc(s)`
+- `initNavToggle('terep:navMini')` – összecsukható (ikonos) oldalsáv, hamburger gomb a `.topbar` elején (`app.js` elejéről hívva); leírás: `..\Kozos_Claude\FEJLESZTES.md`. A Terep saját `.nav-proj` blokkja ikonos módban elválasztó vonallá válik (`app.css`)
 - `modal({ title, body, actions, wide, onMount })` → `{ el, close, done }`; mobilon teljes képernyős.
   **A `data-act` attribútumot a modal a láblécgombokhoz használja** – a törzsben saját gombokhoz `data-do` kell.
   Az átírt `name` attribútumú mező után a bezárás megerősítést kér (ezért az azonnal mentő mezők `id`-t kapnak, nem `name`-et).

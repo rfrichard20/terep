@@ -4,7 +4,7 @@
 //   #/p/<projekt>/attekinto | rajzok | rajz/<id>[?poz=…] | poziciok[?rajz=…&epulet=…&szint=…&allapot=…&hiba=1] | tipusok | projekt.
 // Az oldalak a views/ mappában: { render(view, params, ctx), close?() };
 // ctx: { pid, rerender(), go(útvonal), pgo(projekten belüli útvonal), purl(projekten belüli útvonal) → href, setTitle(cím) }.
-import { html, popover, toast } from './ui.js';
+import { html, popover, toast, initNavToggle } from './ui.js';
 import { ICONS } from './icons.js';
 import * as D from './data.js';
 import * as S from './store.js';
@@ -49,6 +49,7 @@ const REGI = { torzsadatok: 'projekt' };
 const $ = id => document.getElementById(id);
 const view = $('view');
 let current = null;
+initNavToggle('terep:navMini'); // összecsukható (ikonos) oldalsáv, hamburger gomb a felső sávban
 
 /** #/p/<pid>/név/azonosító?a=b vagy #/név/azonosító?a=b → { pid, name, params: { id, a } } */
 function parseHash() {
