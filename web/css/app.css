@@ -35,7 +35,10 @@ body.belepes .view { grid-column: 1 / -1; }
 .back-btn { display: inline-flex; flex: none; }
 .back-btn svg { width: 24px; height: 24px; }
 /* Asztalon a logó az oldalsáv szélességét foglalja → a vissza gomb és a cím a tartalom oszlopánál kezdődik */
-@media (min-width: 900px) { .topbar .brand { width: calc(var(--nav-w) - 1.6rem); } }
+/* A hamburger gomb (36 px, −.4rem margó) + rés a logó előtt van → a logó szélességéből levonjuk, hogy a vége az oldalsáv szélénél maradjon */
+@media (min-width: 900px) { .topbar .brand { width: calc(var(--nav-w) - 1.6rem - 36px - .2rem); } }
+/* Ikonos (64 px-es) oldalsávnál a felirat nem fér a logó helyére → csak a logó, a vissza gomb és a cím utána kezdődik (nem csúszik rá) */
+@media (min-width: 900px) { body.nav-mini .topbar .brand { width: auto; } body.nav-mini .brand .wordmark { display: none; } }
 @media (min-width: 700px) { body:not(.drawing) .topbar .ptitle { visibility: hidden; } }
 @media (max-width: 699px) {
   #view .page-head > h1 { display: none; }
